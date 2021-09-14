@@ -22,7 +22,7 @@ jobs:
       - uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --deny warnings
+          args: --jobs=11 -- --deny warnings
 
   rustfmt_check:
     name: rustfmt
@@ -34,7 +34,6 @@ jobs:
           toolchain: nightly
           components: rustfmt
           override: true
-      - name: test
       - run: cargo fmt --config-path=rustfmt_for_actions.toml --check
 
   test:
