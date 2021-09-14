@@ -17,7 +17,6 @@
  *
  */
 
-use std::string::String;
 use std::vec::Vec;
 use std::fmt::{Display, Formatter};
 

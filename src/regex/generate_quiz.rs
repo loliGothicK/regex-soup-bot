@@ -19,10 +19,12 @@
 
 use super::RegexAst;
 
+#[allow(dead_code)]
 pub struct Difficulty {
     alphabet_size: u8,
 }
 
+#[allow(dead_code)]
 pub fn randomly_generate(_diff: &Difficulty) -> RegexAst {
     todo!()
 }
