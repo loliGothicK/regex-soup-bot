@@ -16,19 +16,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
  */
-#![allow(incomplete_features)]
-// Yeah!
-// <const N: {Integer}>: where Foo<{N + 1}>
-//  ~~~~~~~~~~~~~~~~~~             ~~~~~~~
-//  const generics (stable)        generic_const_exprs
-#![feature(generic_const_exprs)]
-// let foo = ...;
-// println!("{foo}");
-//          ~~~~~~~ format args capture (seem to be C#)
-#![feature(format_args_capture)]
 
-pub mod concepts;
-pub mod notification;
-pub mod parser;
-pub mod response;
-pub mod regex;
+mod regex_tree;
+mod generate_quiz;
+
+pub use regex_tree::*;
