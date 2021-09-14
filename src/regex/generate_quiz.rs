@@ -17,12 +17,12 @@
  *
  */
 
-use super::{Alphabet, RegexAst};
+use super::RegexAst;
 
 pub struct Difficulty {
     alphabet_size: u8,
 }
 
-pub fn randomly_generate(diff: &Difficulty) -> RegexAst {
+pub fn randomly_generate(_diff: &Difficulty) -> RegexAst {
     todo!()
 }

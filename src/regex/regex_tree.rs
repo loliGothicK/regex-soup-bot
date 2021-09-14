@@ -52,22 +52,22 @@ pub enum RegexAst {
     Alternation(Vec<RegexAst>)
 }
 
-pub fn from_raw_string(string: &String) -> anyhow::Result<RegexAst> {
+pub fn from_raw_string(_string: &str) -> anyhow::Result<RegexAst> {
     todo!()
 }
 
 impl RegexAst {
-    pub fn matches(input: &Vec<Alphabet>) -> bool {
+    pub fn matches(_input: &[Alphabet]) -> bool {
         todo!()
     }
 
-    pub fn equivalent_to(another_ast: &RegexAst) -> bool {
+    pub fn equivalent_to(_another_ast: &RegexAst) -> bool {
         todo!()
     }
 }
 
 impl Display for RegexAst {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
         todo!()
     }
 }
