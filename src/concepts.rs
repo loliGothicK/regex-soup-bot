@@ -29,8 +29,7 @@ pub trait Satisfied {}
 ///
 /// ```
 /// #![allow(incomplete_features)]
-/// #![feature(const_evaluatable_checked)]
-/// #![feature(const_generics)]
+/// #![feature(generic_const_exprs)]
 /// use mitama_bot::concepts::{Condition, Satisfied};
 ///
 /// fn foo<const Size: usize>(_arr: &[i32; Size])

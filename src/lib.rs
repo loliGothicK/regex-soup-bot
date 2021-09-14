@@ -16,6 +16,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
  */
+
 #![allow(incomplete_features)]
 // Yeah!
 // <const N: {Integer}>: where Foo<{N + 1}>

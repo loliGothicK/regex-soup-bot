@@ -21,12 +21,12 @@
 
 use anyhow::{anyhow, Context};
 use counted_array::counted_array;
+use once_cell::sync::Lazy;
 use regexsoup::{
     concepts::SameAs,
     notification::{Notification, SlashCommand},
     response::{self, Message, Response},
 };
-use once_cell::sync::Lazy;
 use serenity::{
     async_trait,
     builder::{CreateEmbed, CreateInteractionResponse, EditInteractionResponse},
@@ -157,62 +157,63 @@ impl EventHandler for Handler {
 
     async fn interaction_create(&self, ctx: serenity::client::Context, interaction: Interaction) {
         use regexsoup::parser::Parser;
-        let response: Option<Result<(Response, Interactions), (anyhow::Error, Interactions)>> = if let Some(command) = interaction.clone().application_command() {
-            let dictionary = command.data.parse().unwrap();
+        let response: Option<Result<(Response, Interactions), (anyhow::Error, Interactions)>> =
+            if let Some(command) = interaction.clone().application_command() {
+                let dictionary = command.data.parse().unwrap();
 
-            match &*dictionary {
-                [(_, Notification::SlashCommand(SlashCommand::Command(cmd))), _num]
-                    if cmd.eq("start") =>
-                {
-                    // TODO: call start
-                    None
+                match &*dictionary {
+                    [(_, Notification::SlashCommand(SlashCommand::Command(cmd))), _num]
+                        if cmd.eq("start") =>
+                    {
+                        // TODO: call start
+                        None
+                    }
+                    [(_, Notification::SlashCommand(SlashCommand::Command(cmd))), _str]
+                        if cmd.eq("query") =>
+                    {
+                        // TODO: call query
+                        None
+                    }
+                    [(_, Notification::SlashCommand(SlashCommand::Command(cmd))), _regex]
+                        if cmd.eq("guess") =>
+                    {
+                        // TODO: call guess
+                        None
+                    }
+                    [(_, Notification::SlashCommand(SlashCommand::Command(cmd)))]
+                        if cmd.eq("summary") =>
+                    {
+                        // TODO: call summary
+                        None
+                    }
+                    [(_, Notification::SlashCommand(SlashCommand::Command(cmd)))]
+                        if cmd.eq("join") =>
+                    {
+                        // TODO: call join
+                        None
+                    }
+                    [(_, Notification::SlashCommand(SlashCommand::Command(cmd)))]
+                        if cmd.eq("give-up") =>
+                    {
+                        // TODO: call give_up
+                        None
+                    }
+                    [unknown, ..] => Some(Err((
+                        anyhow::anyhow!("unknown command: {:?}", unknown),
+                        Interactions::Command(command),
+                    ))),
+                    [] => Some(Err((
+                        anyhow::anyhow!("empty command"),
+                        Interactions::Command(command),
+                    ))),
                 }
-                [(_, Notification::SlashCommand(SlashCommand::Command(cmd))), _str]
-                    if cmd.eq("query") =>
-                {
-                    // TODO: call query
-                    None
-                }
-                [(_, Notification::SlashCommand(SlashCommand::Command(cmd))), _regex]
-                    if cmd.eq("guess") =>
-                {
-                    // TODO: call guess
-                    None
-                }
-                [(_, Notification::SlashCommand(SlashCommand::Command(cmd)))]
-                    if cmd.eq("summary") =>
-                {
-                    // TODO: call summary
-                    None
-                }
-                [(_, Notification::SlashCommand(SlashCommand::Command(cmd)))]
-                    if cmd.eq("join") =>
-                {
-                    // TODO: call join
-                    None
-                }
-                [(_, Notification::SlashCommand(SlashCommand::Command(cmd)))]
-                    if cmd.eq("give-up") =>
-                {
-                    // TODO: call give_up
-                    None
-                }
-                [unknown, ..] => Some(Err((
-                    anyhow::anyhow!("unknown command: {:?}", unknown),
-                    Interactions::Command(command.clone()),
-                ))),
-                [] => Some(Err((
-                    anyhow::anyhow!("empty command"),
-                    Interactions::Command(command.clone()),
-                ))),
-            }
-        } else if let Some(component) = interaction.clone().message_component() {
-            let _ = component.data.parse().unwrap();
-            // TODO:
-            None
-        } else {
-            None
-        };
+            } else if let Some(component) = interaction.clone().message_component() {
+                let _ = component.data.parse().unwrap();
+                // TODO:
+                None
+            } else {
+                None
+            };
         let result = if let Some(res) = response {
             res
         } else {
@@ -399,7 +400,8 @@ pub async fn create_slash_commands(http: impl AsRef<Http>) -> anyhow::Result<()>
     .await?;
 
     let _ = ApplicationCommand::create_global_application_command(&http, |a| {
-        a.name("summary").description("Dump the results of the query so far.")
+        a.name("summary")
+            .description("Dump the results of the query so far.")
     })
     .await?;
 
