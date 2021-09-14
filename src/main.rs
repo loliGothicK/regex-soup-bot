@@ -199,11 +199,11 @@ impl EventHandler for Handler {
                 }
                 [unknown, ..] => Some(Err((
                     anyhow::anyhow!("unknown command: {:?}", unknown),
-                    Interactions::Command(command.clone()),
+                    Interactions::Command(command),
                 ))),
                 [] => Some(Err((
                     anyhow::anyhow!("empty command"),
-                    Interactions::Command(command.clone()),
+                    Interactions::Command(command),
                 ))),
             }
         } else if let Some(component) = interaction.clone().message_component() {
