@@ -17,19 +17,14 @@
  *
  */
 
-#![allow(incomplete_features)]
-// Yeah!
-// <const N: {Integer}>: where Foo<{N + 1}>
-//  ~~~~~~~~~~~~~~~~~~             ~~~~~~~
-//  const generics (stable)        generic_const_exprs
-#![feature(generic_const_exprs)]
-// let foo = ...;
-// println!("{foo}");
-//          ~~~~~~~ format args capture (seem to be C#)
-#![feature(format_args_capture)]
+use super::RegexAst;
 
-pub mod concepts;
-pub mod notification;
-pub mod parser;
-pub mod response;
-pub mod regex;
+#[allow(dead_code)]
+pub struct Difficulty {
+    alphabet_size: u8,
+}
+
+#[allow(dead_code)]
+pub fn randomly_generate(_diff: &Difficulty) -> RegexAst {
+    todo!()
+}
