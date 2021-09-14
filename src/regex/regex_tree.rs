@@ -34,15 +34,17 @@ pub enum Alphabet {
     J
 }
 
-/// An abstract syntax tree of a regular expression.
+/// An abstract syntax tree of a regular expression
+/// which denotes a nonempty language over [Alphabet].
 ///
-/// Each of these expressions will correspond to a language over the alphabet set [Alphabet]
+/// In our problem domain, we do not care about empty languages since setting ∅ as the answer for a quiz
+/// is very uninteresting. We therefore restrict ourselves in nonempty regular languages,
+/// and the class of regular expressions corresponding to this language class will not require ∅ as a
+/// constant symbol. The proof is by a simple induction over set of regular expressions.
 #[derive(Debug)]
 pub enum RegexAst {
     /// The expression that matches the empty string
     Epsilon,
-    /// The expression that matches nothing
-    Empty,
     /// An expression that matches an alphabetic literal
     Literal(Alphabet),
     /// An expression that matches if all expressions match successively
