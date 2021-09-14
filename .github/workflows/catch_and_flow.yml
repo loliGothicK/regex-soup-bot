@@ -34,7 +34,7 @@ jobs:
           toolchain: nightly
           components: rustfmt
           override: true
-      - run: cargo fmt --config-path=rustfmt_for_actions.toml --check
+      - run: cargo fmt --check
 
   test:
     name: Run Cargo Test
