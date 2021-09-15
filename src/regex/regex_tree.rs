@@ -158,6 +158,8 @@ where
     })
 }
 
+// We need to tie the knot using `parser!` macro. See
+// https://docs.rs/combine/4.6.1/combine/#examples for details.
 parser! {
     fn regex_parser[Input]()(Input) -> RegexAst
     where [Input: Stream<Token = char>]
