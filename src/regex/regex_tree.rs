@@ -173,8 +173,14 @@ parser! {
 impl RegexAst {
     pub fn parse_str(string: &str) -> anyhow::Result<RegexAst> {
         let (ast, remaining) = regex_parser().parse(string)?;
-        assert!(remaining.is_empty());
-        Ok(ast)
+        if remaining.is_empty() {
+            Ok(ast)
+        } else {
+            Err(anyhow!(
+                r#"Failed to parse a tail "{}" of the input"#,
+                remaining
+            ))
+        }
     }
 
     /// Compile the current AST to a regular expression that does not use a ε.
