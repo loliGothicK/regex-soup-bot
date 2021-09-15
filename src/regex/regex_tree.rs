@@ -177,7 +177,7 @@ impl RegexAst {
             Ok(ast)
         } else {
             Err(anyhow!(
-                "Failed to parse a tail \"{}\" of the input",
+                r#"Failed to parse a tail "{}" of the input"#,
                 remaining
             ))
         }
