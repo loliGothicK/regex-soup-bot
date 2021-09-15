@@ -18,64 +18,39 @@
  */
 
 #![feature(format_args_capture)]
+#![feature(async_closure)]
 
 use anyhow::{anyhow, Context};
 use counted_array::counted_array;
+
 use once_cell::sync::Lazy;
 use regexsoup::{
-    concepts::SameAs,
-    notification::{Notification, SlashCommand},
-    response::{self, Message, Response},
+    bot::{Container, Msg, Tsx},
+    notification::{Notification, SlashCommand, To},
 };
 use serenity::{
     async_trait,
-    builder::{CreateEmbed, CreateInteractionResponse, EditInteractionResponse},
+    builder::CreateEmbed,
     client::{Client, EventHandler},
     http::Http,
     model::{
         gateway::Ready,
         interactions::{
             application_command::{
-                ApplicationCommand, ApplicationCommandInteraction, ApplicationCommandOptionType,
+                ApplicationCommand,
+                ApplicationCommandOptionType,
             },
-            message_component::MessageComponentInteraction,
             Interaction, InteractionResponseType,
         },
     },
     utils::Colour,
 };
 use std::{
-    fmt::{Debug, Display},
+    collections::HashMap,
+    fmt::Debug,
     sync::{Arc, Mutex},
 };
-use tokio::sync::mpsc::{channel, Receiver, Sender};
-
-pub trait MsgSender<Msg> {
-    fn send_msg(self)
-    where
-        Self: SameAs<Msg>;
-}
-
-impl<T: Display + Send + Sync + 'static> MsgSender<anyhow::Result<T>> for anyhow::Result<T> {
-    fn send_msg(self)
-    where
-        Self: SameAs<anyhow::Result<T>>,
-    {
-        let tx = CENTRAL.sender();
-        match self {
-            Ok(msg) => {
-                tokio::spawn(async move {
-                    let _ = tx.send(Msg::Ok(format!("{msg}"))).await;
-                });
-            }
-            Err(err) => {
-                tokio::spawn(async move {
-                    let _ = tx.send(Msg::Err(format!("{err}"))).await;
-                });
-            }
-        }
-    }
-}
+use tokio::sync::mpsc::channel;
 
 counted_array!(
     const COMMANDS: [&'static str; _] = [
@@ -88,51 +63,11 @@ counted_array!(
     ]
 );
 
-enum Interactions {
-    Command(ApplicationCommandInteraction),
-    #[allow(dead_code)]
-    Component(Box<MessageComponentInteraction>),
-}
-
-impl Interactions {
-    pub async fn create_interaction_response<F>(
-        &self,
-        http: impl AsRef<Http>,
-        f: F,
-    ) -> anyhow::Result<()>
-    where
-        F: FnOnce(&mut CreateInteractionResponse) -> &mut CreateInteractionResponse,
-    {
-        match self {
-            Interactions::Command(command) => command.create_interaction_response(http, f).await?,
-            Interactions::Component(component) => {
-                (*component).create_interaction_response(http, f).await?
-            }
-        }
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub async fn edit_original_interaction_response<F>(
-        &self,
-        http: impl AsRef<Http>,
-        f: F,
-    ) -> anyhow::Result<serenity::model::channel::Message>
-    where
-        F: FnOnce(&mut EditInteractionResponse) -> &mut EditInteractionResponse,
-    {
-        Ok(match self {
-            Interactions::Command(command) => {
-                command.edit_original_interaction_response(http, f).await?
-            }
-            Interactions::Component(component) => {
-                (*component)
-                    .edit_original_interaction_response(http, f)
-                    .await?
-            }
-        })
-    }
-}
+#[allow(dead_code)]
+pub static CONTAINER: Lazy<Arc<Container>> = Lazy::new(|| {
+    let container = Container::default();
+    Arc::new(container)
+});
 
 /// Handler for the BOT
 #[derive(Debug)]
@@ -153,179 +88,199 @@ impl EventHandler for Handler {
                     ApplicationCommand::delete_global_application_command(&ctx.http, cmd.id).await;
             }
         }
+        println!("successfully connected!!");
+        let commands = ApplicationCommand::get_global_application_commands(&ctx.http).await;
+        println!("I now have the following global slash commands: {commands:#?}");
     }
 
     async fn interaction_create(&self, ctx: serenity::client::Context, interaction: Interaction) {
         use regexsoup::parser::Parser;
-        let response: Option<Result<(Response, Interactions), (anyhow::Error, Interactions)>> =
-            if let Some(command) = interaction.clone().application_command() {
-                let dictionary = command.data.parse().unwrap();
 
-                match &*dictionary {
-                    [(_, Notification::SlashCommand(SlashCommand::Command(cmd))), _num]
-                        if cmd.eq("start") =>
-                    {
-                        // TODO: call start
-                        None
-                    }
-                    [(_, Notification::SlashCommand(SlashCommand::Command(cmd))), _str]
-                        if cmd.eq("query") =>
-                    {
-                        // TODO: call query
-                        None
-                    }
-                    [(_, Notification::SlashCommand(SlashCommand::Command(cmd))), _regex]
-                        if cmd.eq("guess") =>
-                    {
-                        // TODO: call guess
-                        None
-                    }
-                    [(_, Notification::SlashCommand(SlashCommand::Command(cmd)))]
-                        if cmd.eq("summary") =>
-                    {
-                        // TODO: call summary
-                        None
-                    }
-                    [(_, Notification::SlashCommand(SlashCommand::Command(cmd)))]
-                        if cmd.eq("join") =>
-                    {
-                        // TODO: call join
-                        None
-                    }
-                    [(_, Notification::SlashCommand(SlashCommand::Command(cmd)))]
-                        if cmd.eq("give-up") =>
-                    {
-                        // TODO: call give_up
-                        None
-                    }
-                    [unknown, ..] => Some(Err((
-                        anyhow::anyhow!("unknown command: {:?}", unknown),
-                        Interactions::Command(command),
-                    ))),
-                    [] => Some(Err((
-                        anyhow::anyhow!("empty command"),
-                        Interactions::Command(command),
-                    ))),
-                }
-            } else if let Some(component) = interaction.clone().message_component() {
-                let _ = component.data.parse().unwrap();
-                // TODO:
-                None
-            } else {
-                None
-            };
-        let result = if let Some(res) = response {
-            res
-        } else {
-            // un-expected interaction => skip
-            return;
-        };
+        if let Some(command) = interaction.clone().application_command() {
+            let flat_data = command.data.parse().unwrap();
+            let (head, tail) = flat_data.split_first().unwrap();
+            let dictionary = tail.iter().cloned().collect::<HashMap<_, _>>();
 
-        match result {
-            Err((err, interactions)) => {
-                let mut embed = CreateEmbed::default();
-                embed
-                    .colour(Colour::RED)
-                    .title("INTERACTION ERROR:")
-                    .description(format!("{err:?}"));
-
-                let json = serde_json::to_string(&embed.0);
-
-                interactions
-                    .create_interaction_response(&ctx.http, |response| {
-                        response
-                            .kind(InteractionResponseType::ChannelMessageWithSource)
-                            .interaction_response_data(|message| message.add_embed(embed))
-                    })
-                    .await
-                    .map(|_| format!(r#"{{ "notification" => "{json:?}" }}"#))
-                    .map_err(|#[allow(unused)] err| anyhow!("http error: {err} with {json:?}"))
-                    .send_msg();
-
-                let _ = CENTRAL.sender().send(Msg::Err(format!("{err:?}"))).await;
-            }
-            Ok((response, interactions)) => match response {
-                Response::Message(msg) => match msg {
-                    Message::String(msg) => {
-                        interactions
+            match head {
+                (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("start") => {
+                    let tx = CENTRAL.sender();
+                    tokio::task::spawn(async move {
+                        let msg = "新しいREGガメのスープを開始しました".to_string();
+                        match command
                             .create_interaction_response(&ctx.http, |response| {
                                 response
                                     .kind(InteractionResponseType::ChannelMessageWithSource)
                                     .interaction_response_data(|message| message.content(&msg))
                             })
                             .await
-                            .map(|_| format!(r#"{{ "notification" => "{msg}" }}"#))
-                            .map_err(|#[allow(unused)] err| anyhow!("http error: {err} with {msg}"))
-                            .send_msg();
-                    }
-                    Message::Embed(embed) => {
-                        let json = serde_json::to_string(&embed.0);
-                        interactions
+                        {
+                            Ok(_) => {
+                                let _ = tx
+                                    .send(Msg::Ok(
+                                        "successfully started new regex-soup.".to_owned(),
+                                    ))
+                                    .await;
+                            }
+                            Err(err) => {
+                                let _ = tx.send(Msg::Err(err.into())).await;
+                            }
+                        }
+                    });
+                }
+                (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("query") => {
+                    println!("cmd: query");
+                    let tx = CENTRAL.sender();
+                    tokio::task::spawn(async move {
+                        let input = dictionary
+                            .get(&"input".to_string())
+                            .unwrap()
+                            .to::<String>()
+                            .unwrap();
+                        let msg = format!("{input} => No");
+                        match command
+                            .create_interaction_response(&ctx.http, |response| {
+                                response
+                                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                                    .interaction_response_data(|message| message.content(&msg))
+                            })
+                            .await
+                        {
+                            Ok(_) => {
+                                let _ = tx
+                                    .send(Msg::Ok(
+                                        "successfully finished query command.".to_owned(),
+                                    ))
+                                    .await;
+                            }
+                            Err(err) => {
+                                let _ = tx.send(Msg::Err(err.into())).await;
+                            }
+                        }
+                    });
+                }
+                (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("guess") => {
+                    println!("cmd: guess");
+                    let tx = CENTRAL.sender();
+                    tokio::task::spawn(async move {
+                        let regex = dictionary
+                            .get(&"regex".to_string())
+                            .unwrap()
+                            .to::<String>()
+                            .unwrap();
+                        let msg = format!("{regex} => No");
+                        match command
+                            .create_interaction_response(&ctx.http, |response| {
+                                response
+                                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                                    .interaction_response_data(|message| message.content(&msg))
+                            })
+                            .await
+                        {
+                            Ok(_) => {
+                                let _ = tx
+                                    .send(Msg::Ok(
+                                        "successfully finished guess command.".to_owned(),
+                                    ))
+                                    .await;
+                            }
+                            Err(err) => {
+                                let _ = tx.send(Msg::Err(err.into())).await;
+                            }
+                        }
+                    });
+                }
+                (_, Notification::SlashCommand(SlashCommand::Command(cmd)))
+                    if cmd.eq("summary") =>
+                {
+                    println!("cmd: summary");
+                    let tx = CENTRAL.sender();
+                    tokio::task::spawn(async move {
+                        let mut embed = CreateEmbed::default();
+                        embed
+                            .colour(Colour::DARK_BLUE)
+                            .title("query history")
+                            .field("dummy", "yes", false)
+                            .field("dummy", "yes", false)
+                            .field("dummy", "no", false);
+                        match command
                             .create_interaction_response(&ctx.http, |response| {
                                 response
                                     .kind(InteractionResponseType::ChannelMessageWithSource)
                                     .interaction_response_data(|message| message.add_embed(embed))
                             })
                             .await
-                            .map(|_| format!(r#"{{ "notification" => {json:?}"#))
-                            .map_err(|#[allow(unused)] err| {
-                                anyhow!("http error: {err} with {json:?}")
-                            })
-                            .send_msg();
-                    }
-                },
-                Response::Components(component) => {
-                    interactions
-                        .create_interaction_response(&ctx.http, |response| {
-                            response
-                                .kind(InteractionResponseType::ChannelMessageWithSource)
-                                .interaction_response_data(|data| match component {
-                                    response::Component::Buttons { content, buttons } => {
-                                        data.content(content).components(|components| {
-                                            components.create_action_row(|action_row| {
-                                                for button in buttons.into_iter() {
-                                                    action_row.add_button(button);
-                                                }
-                                                action_row
-                                            })
-                                        })
-                                    }
-                                    response::Component::SelectMenu {
-                                        custom_id,
-                                        content,
-                                        placeholder,
-                                        min_value,
-                                        max_value,
-                                        options,
-                                    } => data.content(content).components(|components| {
-                                        components.create_action_row(|act| {
-                                            act.create_select_menu(|select_menu| {
-                                                select_menu
-                                                    .placeholder(placeholder)
-                                                    .custom_id(custom_id)
-                                                    .min_values(min_value)
-                                                    .max_values(max_value)
-                                                    .options(|builder| {
-                                                        for opt in options {
-                                                            builder.create_option(|o| {
-                                                                o.description(opt.description)
-                                                                    .value(opt.value)
-                                                                    .label(opt.label)
-                                                            });
-                                                        }
-                                                        builder
-                                                    })
-                                            })
-                                        })
-                                    }),
-                                })
-                        })
-                        .await
-                        .map(|_| "Succeeded")
-                        .map_err(|err| anyhow!("http error: {}", err))
-                        .send_msg();
+                        {
+                            Ok(_) => {
+                                let _ = tx
+                                    .send(Msg::Ok(
+                                        "successfully finished summary command.".to_owned(),
+                                    ))
+                                    .await;
+                            }
+                            Err(err) => {
+                                let _ = tx.send(Msg::Err(err.into())).await;
+                            }
+                        }
+                    });
                 }
-            },
+                (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("join") => {
+                    println!("cmd: join");
+                    let tx = CENTRAL.sender();
+                    tokio::task::spawn(async move {
+                        let user_name = command.user.name.clone();
+                        let msg = format!("{user_name} is added.");
+                        match command
+                            .create_interaction_response(&ctx.http, |response| {
+                                response
+                                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                                    .interaction_response_data(|message| message.content(&msg))
+                            })
+                            .await
+                        {
+                            Ok(_) => {
+                                let _ = tx.send(Msg::Ok(format!("{user_name} is added."))).await;
+                            }
+                            Err(err) => {
+                                let _ = tx.send(Msg::Err(err.into())).await;
+                            }
+                        }
+                    });
+                }
+                (_, Notification::SlashCommand(SlashCommand::Command(cmd)))
+                    if cmd.eq("give-up") =>
+                {
+                    println!("cmd: give-up");
+                    let tx = CENTRAL.sender();
+                    tokio::task::spawn(async move {
+                        let user_name = command.user.name.clone();
+                        let msg = format!("{user_name} is removed.");
+                        match command
+                            .create_interaction_response(&ctx.http, |response| {
+                                response
+                                    .kind(InteractionResponseType::ChannelMessageWithSource)
+                                    .interaction_response_data(|message| message.content(&msg))
+                            })
+                            .await
+                        {
+                            Ok(_) => {
+                                let _ = tx.send(Msg::Ok(format!("{user_name} is removed."))).await;
+                            }
+                            Err(err) => {
+                                let _ = tx.send(Msg::Err(err.into())).await;
+                            }
+                        }
+                    });
+                }
+                (_, unknown) => {
+                    let _ = CENTRAL
+                        .sender()
+                        .send(Msg::Err(anyhow::anyhow!("unknown command: {:?}", unknown)))
+                        .await;
+                }
+            }
+        } else if let Some(component) = interaction.clone().message_component() {
+            let _ = component.data.parse().unwrap();
+            // TODO:
         }
     }
 }
@@ -335,7 +290,10 @@ pub async fn bot_client() -> anyhow::Result<Client> {
     let token = std::env::var("REGEX_SOUP_TOKEN").unwrap();
 
     // The Application Id is usually the Bot User Id.
-    let application_id = std::env::var("BOT_ID").unwrap().parse::<u64>().unwrap();
+    let application_id = std::env::var("REGEX_SOUP_ID")
+        .unwrap()
+        .parse::<u64>()
+        .unwrap();
 
     // Build our client.
     Client::builder(token)
@@ -379,8 +337,8 @@ pub async fn create_slash_commands(http: impl AsRef<Http>) -> anyhow::Result<()>
         a.name("query")
             .description("Starting new regex-soup")
             .create_option(|o| {
-                o.name("string")
-                    .description("Please enter the string you wish to test for a match.")
+                o.name("input")
+                    .description("Please enter the input you wish to test for a match.")
                     .kind(ApplicationCommandOptionType::String)
                     .required(true)
             })
@@ -418,23 +376,6 @@ pub async fn create_slash_commands(http: impl AsRef<Http>) -> anyhow::Result<()>
     Ok(())
 }
 
-/// Struct that holds sender and receiver
-pub struct Tsx<T> {
-    sender: Arc<Sender<T>>,
-    receiver: Arc<Mutex<Receiver<T>>>,
-}
-
-/// Getter for sender and receiver
-impl<T> Tsx<T> {
-    pub fn sender(&self) -> Arc<Sender<T>> {
-        Arc::clone(&self.sender)
-    }
-
-    pub fn receiver(&self) -> Arc<Mutex<Receiver<T>>> {
-        Arc::clone(&self.receiver)
-    }
-}
-
 /// Sender/Receiver
 pub static CENTRAL: Lazy<Tsx<Msg>> = Lazy::new(|| {
     let (sender, receiver) = channel(8);
@@ -444,18 +385,13 @@ pub static CENTRAL: Lazy<Tsx<Msg>> = Lazy::new(|| {
     }
 });
 
-pub enum Msg {
-    Ok(String),
-    Err(String),
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // spawn bot client
     tokio::spawn(async move {
         let mut client = bot_client().await.expect("client");
         if let Err(why) = client.start().await {
-            let _ = CENTRAL.sender().send(Msg::Err(format!("{why}"))).await;
+            println!("{why}");
         }
     });
 
@@ -465,12 +401,8 @@ async fn main() -> anyhow::Result<()> {
         // streaming
         while let Some(msg) = rx.recv().await {
             match msg {
-                Msg::Ok(msg) => {
-                    println!("{msg:?}");
-                }
-                Msg::Err(err) => {
-                    println!("{err:?}");
-                }
+                Msg::Ok(log) => println!("{log}"),
+                Msg::Err(why) => println!("{why}"),
             }
         }
     }

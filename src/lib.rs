@@ -28,6 +28,7 @@
 //          ~~~~~~~ format args capture (seem to be C#)
 #![feature(format_args_capture)]
 
+pub mod bot;
 pub mod concepts;
 pub mod notification;
 pub mod parser;
