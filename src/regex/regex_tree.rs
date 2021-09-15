@@ -398,4 +398,38 @@ mod tests {
             )
         );
     }
+
+    #[test]
+    fn regex_ast_equivalence() {
+        fn compile_to_regex_ast(regex_str: &str) -> RegexAst {
+            RegexAst::parse_str(regex_str).unwrap()
+        }
+
+        let positives = vec![("abεc", "εabc"), ("ε|εεε*", "ε")];
+        let negatives = vec![("abεc", "abbc"), ("ε", "a")];
+
+        for (regex_str_1, regex_str_2) in positives {
+            let ast_1 = compile_to_regex_ast(regex_str_1);
+            let ast_2 = compile_to_regex_ast(regex_str_2);
+
+            assert!(
+                ast_1.equivalent_to(&ast_2),
+                "The regular expression \"{}\" should be equivalent to \"{}\"",
+                ast_1,
+                ast_2
+            )
+        }
+
+        for (regex_str_1, regex_str_2) in negatives {
+            let ast_1 = compile_to_regex_ast(regex_str_1);
+            let ast_2 = compile_to_regex_ast(regex_str_2);
+
+            assert!(
+                !ast_1.equivalent_to(&ast_2),
+                "The regular expression \"{}\" should not be equivalent to \"{}\"",
+                ast_1,
+                ast_2
+            )
+        }
+    }
 }
