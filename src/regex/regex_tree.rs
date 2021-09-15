@@ -176,7 +176,10 @@ impl RegexAst {
         if remaining.is_empty() {
             Ok(ast)
         } else {
-            Err(anyhow!("Failed to parse a tail \"{}\" of the input", remaining))
+            Err(anyhow!(
+                "Failed to parse a tail \"{}\" of the input",
+                remaining
+            ))
         }
     }
 
