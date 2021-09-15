@@ -42,8 +42,8 @@ pub enum Alphabet {
 }
 
 impl Alphabet {
-    fn from_char(char: &char) -> anyhow::Result<Alphabet> {
-        match char {
+    fn from_char(input: &char) -> anyhow::Result<Alphabet> {
+        match input {
             'a' | 'A' => Ok(Alphabet::A),
             'b' | 'B' => Ok(Alphabet::B),
             'c' | 'C' => Ok(Alphabet::C),
@@ -54,7 +54,7 @@ impl Alphabet {
             'h' | 'H' => Ok(Alphabet::H),
             'i' | 'I' => Ok(Alphabet::I),
             'j' | 'J' => Ok(Alphabet::J),
-            _ => Err(anyhow!("Character {} is not a valid Alphabet", char)),
+            _ => Err(anyhow!("Character {input} is not a valid Alphabet")),
         }
     }
 
