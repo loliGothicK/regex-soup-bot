@@ -16,7 +16,11 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
  */
-use serenity::model::interactions::application_command;
+
+use crate::concepts::SameAs;
+use serenity::model::{interactions::application_command, user::User};
+
+type OptionValue = serenity::model::interactions::application_command::ApplicationCommandInteractionDataOptionValue;
 
 #[derive(Debug, Clone)]
 pub enum SlashCommand {
@@ -35,4 +39,41 @@ pub enum Component {
 pub enum Notification {
     SlashCommand(SlashCommand),
     Component(Component),
+}
+
+pub trait To<Target> {
+    fn to<T>(&self) -> anyhow::Result<Target>
+    where
+        T: SameAs<Target>;
+}
+
+impl To<String> for Notification {
+    fn to<T>(&self) -> anyhow::Result<String>
+    where
+        T: SameAs<String>,
+    {
+        if let Notification::SlashCommand(SlashCommand::Option(boxed)) = self {
+            if let OptionValue::String(value) = &**boxed {
+                return Ok(value.clone());
+            }
+        }
+        Err(anyhow::anyhow!(
+            "cannot convert self to String: {:?}",
+            &self
+        ))
+    }
+}
+
+impl To<User> for Notification {
+    fn to<T>(&self) -> anyhow::Result<User>
+    where
+        T: SameAs<User>,
+    {
+        if let Notification::SlashCommand(SlashCommand::Option(boxed)) = self {
+            if let OptionValue::User(user, ..) = &**boxed {
+                return Ok(user.clone());
+            }
+        }
+        Err(anyhow::anyhow!("cannot convert self to User {:?}", &self))
+    }
 }
