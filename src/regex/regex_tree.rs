@@ -59,12 +59,7 @@ impl Alphabet {
     }
 
     pub fn vec_from_str(string: &str) -> anyhow::Result<Vec<Alphabet>> {
-        let mut result = Vec::new();
-        for c in string.chars() {
-            let alphabet = Self::from_char(c.borrow())?;
-            result.push(alphabet);
-        }
-        Ok(result)
+        string.chars().map(|c| Self::from_char(&c)).collect::<anyhow::Result<Vec<_>>>()
     }
 }
 
