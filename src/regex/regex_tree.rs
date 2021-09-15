@@ -405,7 +405,14 @@ mod tests {
             RegexAst::parse_str(regex_str).unwrap()
         }
 
-        let positives = vec![("abεc", "εabc"), ("ε|εεε*", "ε")];
+        let positives = vec![
+            ("abεc", "εabc"),
+            ("ε|εεε*", "ε"),
+            (
+                "(a|b|c)*(a|b)(a|b)(a|b)",
+                "((a|b|c)*c(a|b)(a|b)(a|b)+)|((a|b)(a|b)(a|b)+)",
+            ),
+        ];
         let negatives = vec![("abεc", "abbc"), ("ε", "a")];
 
         for (regex_str_1, regex_str_2) in positives {
