@@ -31,5 +31,5 @@
 pub mod concepts;
 pub mod notification;
 pub mod parser;
-pub mod response;
 pub mod regex;
+pub mod response;

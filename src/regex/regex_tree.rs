@@ -17,8 +17,10 @@
  *
  */
 
-use std::vec::Vec;
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt::{Display, Formatter},
+    vec::Vec,
+};
 
 #[derive(Debug)]
 pub enum Alphabet {
@@ -31,7 +33,7 @@ pub enum Alphabet {
     G,
     H,
     I,
-    J
+    J,
 }
 
 /// An abstract syntax tree of a regular expression.
@@ -48,7 +50,7 @@ pub enum RegexAst {
     /// An expression that matches if all expressions match successively
     Concatenation(Vec<RegexAst>),
     /// An expression that matches if one of expressions matches
-    Alternation(Vec<RegexAst>)
+    Alternation(Vec<RegexAst>),
 }
 
 pub fn from_raw_string(_string: &str) -> anyhow::Result<RegexAst> {

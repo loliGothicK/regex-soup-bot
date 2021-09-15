@@ -17,7 +17,7 @@
  *
  */
 
-mod regex_tree;
 mod generate_quiz;
+mod regex_tree;
 
 pub use regex_tree::*;
