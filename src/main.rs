@@ -36,10 +36,7 @@ use serenity::{
     model::{
         gateway::Ready,
         interactions::{
-            application_command::{
-                ApplicationCommand,
-                ApplicationCommandOptionType,
-            },
+            application_command::{ApplicationCommand, ApplicationCommandOptionType},
             Interaction, InteractionResponseType,
         },
     },
