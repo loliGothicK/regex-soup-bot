@@ -18,30 +18,32 @@
  */
 
 use automata::{nfa::Nfa, Alphabet};
+use itertools::Itertools;
 
 /// The NFA that only accepts the empty word.
 pub fn epsilon<A: Alphabet>() -> Nfa<A> {
-    todo!()
+    Nfa::from_edges(vec![], vec![0])
 }
 
 /// An NFA that only accepts the single-letter word containing the given alphabet.
-pub fn literal<A: Alphabet>(_alphabet: A) -> Nfa<A> {
-    todo!()
+pub fn literal<A: Alphabet>(alphabet: A) -> Nfa<A> {
+    Nfa::from_edges(vec![(0, Some(alphabet), 1)], vec![1])
 }
 
-#[allow(dead_code)]
 /// An NFA that recognizes `L(left)^L(right)` where `^` is the concatenation of languages.
 pub fn concat<A: Alphabet>(_left: &Nfa<A>, _right: &Nfa<A>) -> Nfa<A> {
     todo!()
 }
 
 /// An NFA that accepts concatenations of words each of which is recognized by NFAs in the slice.
-pub fn concat_all<A: Alphabet>(_nfas: &[Nfa<A>]) -> Nfa<A> {
-    todo!()
+pub fn concat_all<A: Alphabet>(nfas: Vec<Nfa<A>>) -> Nfa<A> {
+    assert!(nfas.len() > 0, "argument for concat_all must be nonempty slice");
+    nfas.into_iter().fold1(|nfa1, nfa2| concat(&nfa1, &nfa2)).unwrap()
 }
 
 /// An NFA that recognizes union of languages of NFAs in the given slice.
-pub fn union_all<A: Alphabet>(_nfas: &[Nfa<A>]) -> Nfa<A> {
+pub fn union_all<A: Alphabet>(nfas: Vec<Nfa<A>>) -> Nfa<A> {
+    assert!(nfas.len() > 0, "argument for union_all must be nonempty slice");
     todo!()
 }
 

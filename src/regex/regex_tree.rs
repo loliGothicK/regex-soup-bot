@@ -215,14 +215,14 @@ impl RegexAst {
                     .iter()
                     .map(|ast| ast.compile_to_nfa())
                     .collect::<Vec<_>>();
-                nfa_manipulations::concat_all(&compiled_asts)
+                nfa_manipulations::concat_all(compiled_asts)
             }
             RegexAst::Alternation(asts) => {
                 let compiled_asts = asts
                     .iter()
                     .map(|ast| ast.compile_to_nfa())
                     .collect::<Vec<_>>();
-                nfa_manipulations::union_all(&compiled_asts)
+                nfa_manipulations::union_all(compiled_asts)
             }
         }
     }
