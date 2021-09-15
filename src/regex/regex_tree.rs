@@ -18,10 +18,12 @@
  */
 
 use anyhow::anyhow;
-use std::vec::Vec;
-use std::fmt::{Display, Formatter};
 use itertools::Itertools;
-use std::borrow::Borrow;
+use std::{
+    borrow::Borrow,
+    fmt::{Display, Formatter},
+    vec::Vec,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Alphabet {
@@ -34,7 +36,7 @@ pub enum Alphabet {
     G,
     H,
     I,
-    J
+    J,
 }
 
 impl Alphabet {
@@ -50,11 +52,11 @@ impl Alphabet {
             'h' | 'H' => Ok(Alphabet::H),
             'i' | 'I' => Ok(Alphabet::I),
             'j' | 'J' => Ok(Alphabet::J),
-            _ => Err(anyhow!("Character {} is not a valid Alphabet", char))
+            _ => Err(anyhow!("Character {} is not a valid Alphabet", char)),
         }
     }
 
-    pub fn from_str(string: &str) -> anyhow::Result<Vec<Alphabet>> {
+    pub fn vec_from_str(string: &str) -> anyhow::Result<Vec<Alphabet>> {
         let mut result = Vec::new();
         for c in string.chars() {
             let alphabet = Self::from_char(c.borrow())?;
@@ -111,17 +113,17 @@ pub enum RegexAst {
     /// An expression that matches if all expressions match successively
     Concatenation(Vec<RegexAst>),
     /// An expression that matches if one of expressions matches
-    Alternation(Vec<RegexAst>)
+    Alternation(Vec<RegexAst>),
 }
 
 impl RegexAst {
-    pub fn from_str(_string: &str) -> anyhow::Result<RegexAst> {
+    pub fn parse_str(_string: &str) -> anyhow::Result<RegexAst> {
         todo!()
     }
 
     /// Format the AST in a way that there cannot be any ambiguity.
     fn fmt_with_extra_parens(&self) -> String {
-        fn join_with_separator(sep: &str, asts: &Vec<RegexAst>) -> String {
+        fn join_with_separator(sep: &str, asts: &[RegexAst]) -> String {
             asts.iter().map(|ast| ast.fmt_with_extra_parens()).join(sep)
         }
 
@@ -154,32 +156,38 @@ impl Display for RegexAst {
             RegexAst::Epsilon => write!(f, "ε"),
             RegexAst::Literal(a) => a.fmt(f),
             RegexAst::Star(ast) => write!(f, "({})*", ast),
-            RegexAst::Concatenation(asts) =>
-                write!(f, "({})", asts.iter().map(|ast| format!("{}", ast)).join("")),
-            RegexAst::Alternation(asts) =>
-                write!(f, "({})", asts.iter().map(|ast| format!("{}", ast)).join("|")),
+            RegexAst::Concatenation(asts) => write!(
+                f,
+                "({})",
+                asts.iter().map(|ast| format!("{}", ast)).join("")
+            ),
+            RegexAst::Alternation(asts) => write!(
+                f,
+                "({})",
+                asts.iter().map(|ast| format!("{}", ast)).join("|")
+            ),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::regex::{RegexAst, Alphabet};
+    use crate::regex::{Alphabet, RegexAst};
 
     #[test]
     fn str_to_alphabets() {
         assert_eq!(
-            Alphabet::from_str("ABCJ").unwrap(),
+            Alphabet::vec_from_str("ABCJ").unwrap(),
             vec![Alphabet::A, Alphabet::B, Alphabet::C, Alphabet::J]
         );
 
         assert_eq!(
-            Alphabet::from_str("abcj").unwrap(),
+            Alphabet::vec_from_str("abcj").unwrap(),
             vec![Alphabet::A, Alphabet::B, Alphabet::C, Alphabet::J]
         );
 
         assert_eq!(
-            Alphabet::from_str("abCg").unwrap(),
+            Alphabet::vec_from_str("abCg").unwrap(),
             vec![Alphabet::A, Alphabet::B, Alphabet::C, Alphabet::G]
         )
     }
@@ -187,28 +195,33 @@ mod tests {
     #[test]
     #[should_panic]
     fn str_to_alphabets_panic() {
-        Alphabet::from_str("Z").unwrap();
+        Alphabet::vec_from_str("Z").unwrap();
     }
 
     #[test]
     fn str_to_regex_ast() {
         assert_eq!(
-            RegexAst::from_str("abc").unwrap(),
-            RegexAst::Concatenation(vec![RegexAst::Literal(Alphabet::A), RegexAst::Literal(Alphabet::B), RegexAst::Literal(Alphabet::C), ])
+            RegexAst::parse_str("abc").unwrap(),
+            RegexAst::Concatenation(vec![
+                RegexAst::Literal(Alphabet::A),
+                RegexAst::Literal(Alphabet::B),
+                RegexAst::Literal(Alphabet::C),
+            ])
         );
 
         assert_eq!(
-            RegexAst::from_str("ab|c").unwrap(),
+            RegexAst::parse_str("ab|c").unwrap(),
             RegexAst::Alternation(vec![
                 RegexAst::Concatenation(vec![
-                    RegexAst::Literal(Alphabet::A), RegexAst::Literal(Alphabet::B)
+                    RegexAst::Literal(Alphabet::A),
+                    RegexAst::Literal(Alphabet::B)
                 ]),
                 RegexAst::Literal(Alphabet::C)
             ])
         );
 
         assert_eq!(
-            RegexAst::from_str("ab*|cd").unwrap(),
+            RegexAst::parse_str("ab*|cd").unwrap(),
             RegexAst::Alternation(vec![
                 RegexAst::Concatenation(vec![
                     RegexAst::Literal(Alphabet::A),
@@ -224,62 +237,70 @@ mod tests {
 
     #[test]
     fn fmt_regex_ast() {
-        assert_eq!("(abε)",
-                   format!("{}",
-                           RegexAst::Concatenation(vec![
-                               RegexAst::Literal(Alphabet::A),
-                               RegexAst::Literal(Alphabet::B),
-                               RegexAst::Epsilon,
-                           ])
-                   ));
+        assert_eq!(
+            "(abε)",
+            format!(
+                "{}",
+                RegexAst::Concatenation(vec![
+                    RegexAst::Literal(Alphabet::A),
+                    RegexAst::Literal(Alphabet::B),
+                    RegexAst::Epsilon,
+                ])
+            )
+        );
 
-        assert_eq!("(a|b|ε)",
-                   format!("{}",
-                           RegexAst::Alternation(vec![
-                               RegexAst::Literal(Alphabet::A),
-                               RegexAst::Literal(Alphabet::B),
-                               RegexAst::Epsilon,
-                           ])
-                   ));
+        assert_eq!(
+            "(a|b|ε)",
+            format!(
+                "{}",
+                RegexAst::Alternation(vec![
+                    RegexAst::Literal(Alphabet::A),
+                    RegexAst::Literal(Alphabet::B),
+                    RegexAst::Epsilon,
+                ])
+            )
+        );
 
-        assert_eq!("((a|g))*",
-                   format!("{}",
-                           RegexAst::Star(Box::new(
-                               RegexAst::Alternation(vec![
-                                   RegexAst::Literal(Alphabet::A),
-                                   RegexAst::Literal(Alphabet::G),
-                               ])
-                           ))
-                   ));
+        assert_eq!(
+            "((a|g))*",
+            format!(
+                "{}",
+                RegexAst::Star(Box::new(RegexAst::Alternation(vec![
+                    RegexAst::Literal(Alphabet::A),
+                    RegexAst::Literal(Alphabet::G),
+                ])))
+            )
+        );
 
-        assert_eq!("((a|(bc)))*",
-                   format!("{}",
-                           RegexAst::Star(Box::new(
-                               RegexAst::Alternation(vec![
-                                   RegexAst::Literal(Alphabet::A),
-                                   RegexAst::Concatenation(vec![
-                                       RegexAst::Literal(Alphabet::B),
-                                       RegexAst::Literal(Alphabet::C),
-                                   ]),
-                               ])
-                           ))
-                   ));
+        assert_eq!(
+            "((a|(bc)))*",
+            format!(
+                "{}",
+                RegexAst::Star(Box::new(RegexAst::Alternation(vec![
+                    RegexAst::Literal(Alphabet::A),
+                    RegexAst::Concatenation(vec![
+                        RegexAst::Literal(Alphabet::B),
+                        RegexAst::Literal(Alphabet::C),
+                    ]),
+                ])))
+            )
+        );
 
-        assert_eq!("(((a|c)|(bc)))*",
-                   format!("{}",
-                           RegexAst::Star(Box::new(
-                               RegexAst::Alternation(vec![
-                                   RegexAst::Alternation(vec![
-                                       RegexAst::Literal(Alphabet::A),
-                                       RegexAst::Literal(Alphabet::C)
-                                   ]),
-                                   RegexAst::Concatenation(vec![
-                                       RegexAst::Literal(Alphabet::B),
-                                       RegexAst::Literal(Alphabet::C),
-                                   ]),
-                               ])
-                           ))
-                   ));
+        assert_eq!(
+            "(((a|c)|(bc)))*",
+            format!(
+                "{}",
+                RegexAst::Star(Box::new(RegexAst::Alternation(vec![
+                    RegexAst::Alternation(vec![
+                        RegexAst::Literal(Alphabet::A),
+                        RegexAst::Literal(Alphabet::C)
+                    ]),
+                    RegexAst::Concatenation(vec![
+                        RegexAst::Literal(Alphabet::B),
+                        RegexAst::Literal(Alphabet::C),
+                    ]),
+                ])))
+            )
+        );
     }
 }
-
