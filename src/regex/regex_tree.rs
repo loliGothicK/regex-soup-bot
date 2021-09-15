@@ -18,14 +18,16 @@
  */
 
 use anyhow::anyhow;
+use combine::{choice, parser, unexpected_any, value, ParseError, Parser, Stream};
 use itertools::Itertools;
+use parser::char::{char, letter};
 use std::{
     borrow::Borrow,
     fmt::{Display, Formatter},
     vec::Vec,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Alphabet {
     A,
     B,
@@ -102,7 +104,7 @@ impl Display for Alphabet {
 /// in a descending order.
 ///
 /// For example, `ab*|cd` should be equivalent to `(a((b)*))|(cd)`.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RegexAst {
     /// The expression that matches the empty string
     Epsilon,
@@ -116,9 +118,64 @@ pub enum RegexAst {
     Alternation(Vec<RegexAst>),
 }
 
+fn regex_parser_<Input>() -> impl Parser<Input, Output = RegexAst>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    let parse_epsilon = parser::char::string("ε").map(|_s| RegexAst::Epsilon);
+
+    let parse_literal = letter().then(|letter| match Alphabet::from_char(&letter) {
+        Ok(a) => value(RegexAst::Literal(a)).left(),
+        Err(_) => unexpected_any(letter).message("Unexpected literal").right(),
+    });
+
+    let parse_epsilon_literal_or_parens = choice!(
+        parse_epsilon,
+        parse_literal,
+        char('(').with(regex_parser()).skip(char(')'))
+    );
+
+    let parse_repetitions = parse_epsilon_literal_or_parens.then(|ast| {
+        combine::many::<Vec<_>, _, _>(char('*')).map(move |reps| {
+            if !reps.is_empty() {
+                RegexAst::Star(Box::new(ast.clone()))
+            } else {
+                ast.clone()
+            }
+        })
+    });
+
+    let parse_concat = combine::many1::<Vec<_>, _, _>(parse_repetitions).map(|asts| {
+        if asts.len() > 1 {
+            RegexAst::Concatenation(asts)
+        } else {
+            asts.first().unwrap().clone()
+        }
+    });
+
+    combine::sep_by1::<Vec<_>, _, _, _>(parse_concat, char('|')).map(|asts| {
+        if asts.len() > 1 {
+            RegexAst::Alternation(asts)
+        } else {
+            asts.first().unwrap().clone()
+        }
+    })
+}
+
+parser! {
+    fn regex_parser[Input]()(Input) -> RegexAst
+    where [Input: Stream<Token = char>]
+    {
+        regex_parser_()
+    }
+}
+
 impl RegexAst {
-    pub fn parse_str(_string: &str) -> anyhow::Result<RegexAst> {
-        todo!()
+    pub fn parse_str(string: &str) -> anyhow::Result<RegexAst> {
+        let (ast, remaining) = regex_parser().parse(string)?;
+        assert!(remaining.is_empty());
+        Ok(ast)
     }
 
     /// Format the AST in a way that there cannot be any ambiguity.
