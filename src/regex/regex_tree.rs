@@ -17,9 +17,11 @@
  *
  */
 
+use anyhow::anyhow;
 use std::vec::Vec;
 use std::fmt::{Display, Formatter};
 use itertools::Itertools;
+use std::borrow::Borrow;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Alphabet {
@@ -35,38 +37,30 @@ pub enum Alphabet {
     J
 }
 
-/// An abstract syntax tree of a regular expression
-/// which denotes a nonempty language over [Alphabet].
-///
-/// In our problem domain, we do not care about empty languages since setting ∅ as the answer for a quiz
-/// is very uninteresting. We therefore restrict ourselves in nonempty regular languages,
-/// and the class of regular expressions corresponding to this language class will not require ∅ as a
-/// constant symbol. The proof is by a simple induction over set of regular expressions.
-#[derive(Debug, PartialEq, Eq)]
-pub enum RegexAst {
-    /// The expression that matches the empty string
-    Epsilon,
-    /// An expression that matches an alphabetic literal
-    Literal(Alphabet),
-    /// An expression that matches a repetition of words matching inner expression
-    Star(Box<RegexAst>),
-    /// An expression that matches if all expressions match successively
-    Concatenation(Vec<RegexAst>),
-    /// An expression that matches if one of expressions matches
-    Alternation(Vec<RegexAst>)
-}
-
-pub fn from_raw_string(_string: &str) -> anyhow::Result<RegexAst> {
-    todo!()
-}
-
-impl RegexAst {
-    pub fn matches(_input: &[Alphabet]) -> bool {
-        todo!()
+impl Alphabet {
+    fn from_char(char: &char) -> anyhow::Result<Alphabet> {
+        match char {
+            'a' | 'A' => Ok(Alphabet::A),
+            'b' | 'B' => Ok(Alphabet::B),
+            'c' | 'C' => Ok(Alphabet::C),
+            'd' | 'D' => Ok(Alphabet::D),
+            'e' | 'E' => Ok(Alphabet::E),
+            'f' | 'F' => Ok(Alphabet::F),
+            'g' | 'G' => Ok(Alphabet::G),
+            'h' | 'H' => Ok(Alphabet::H),
+            'i' | 'I' => Ok(Alphabet::I),
+            'j' | 'J' => Ok(Alphabet::J),
+            _ => Err(anyhow!("Character {} is not a valid Alphabet", char))
+        }
     }
 
-    pub fn equivalent_to(_another_ast: &RegexAst) -> bool {
-        todo!()
+    pub fn from_str(string: &str) -> anyhow::Result<Vec<Alphabet>> {
+        let mut result = Vec::new();
+        for c in string.chars() {
+            let alphabet = Self::from_char(c.borrow())?;
+            result.push(alphabet);
+        }
+        Ok(result)
     }
 }
 
@@ -87,8 +81,75 @@ impl Display for Alphabet {
     }
 }
 
+/// An abstract syntax tree of a regular expression
+/// which denotes a nonempty language over [Alphabet].
+///
+/// In our problem domain, we do not care about empty languages since setting ∅ as the answer for a quiz
+/// is very uninteresting. We therefore restrict ourselves in nonempty regular languages,
+/// and the class of regular expressions corresponding to this language class will not require ∅ as a
+/// constant symbol. The proof is by a simple induction over set of regular expressions.
+///
+/// In a string representation of this datatype, Epsilon is mapped to a character `ε`
+/// and literals are mapped to either upper-case or lower-case of corresponding alphabets
+/// (`fmt` method will format literals to lower-cases).
+/// Star will be denoted by the postfix operator `*`,
+/// alternations will be the infix operator `|` and concatenations will have no symbols.
+///
+/// The precedence of operators should be:
+/// `Star`, `Concatenation` and then `Alternation`
+/// in a descending order.
+///
+/// For example, `ab*|cd` should be equivalent to `(a((b)*))|(cd)`.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RegexAst {
+    /// The expression that matches the empty string
+    Epsilon,
+    /// An expression that matches an alphabetic literal
+    Literal(Alphabet),
+    /// An expression that matches a repetition of words matching inner expression
+    Star(Box<RegexAst>),
+    /// An expression that matches if all expressions match successively
+    Concatenation(Vec<RegexAst>),
+    /// An expression that matches if one of expressions matches
+    Alternation(Vec<RegexAst>)
+}
+
+impl RegexAst {
+    pub fn from_str(_string: &str) -> anyhow::Result<RegexAst> {
+        todo!()
+    }
+
+    /// Format the AST in a way that there cannot be any ambiguity.
+    fn fmt_with_extra_parens(&self) -> String {
+        fn join_with_separator(sep: &str, asts: &Vec<RegexAst>) -> String {
+            asts.iter().map(|ast| ast.fmt_with_extra_parens()).join(sep)
+        }
+
+        match self {
+            RegexAst::Epsilon => "ε".to_owned(),
+            RegexAst::Literal(a) => format!("{}", a),
+            RegexAst::Star(ast) => format!("({})*", (*ast).fmt_with_extra_parens()),
+            RegexAst::Concatenation(asts) => format!("({})", join_with_separator("", asts)),
+            RegexAst::Alternation(asts) => format!("({})", join_with_separator("|", asts)),
+        }
+    }
+
+    pub fn matches(&self, input: &[Alphabet]) -> bool {
+        let regex = format!("^({})$", self.fmt_with_extra_parens());
+        let compiled = regex::Regex::new(&regex).unwrap();
+        let input_str = input.iter().map(|a| format!("{}", a)).join("");
+
+        compiled.is_match(&input_str)
+    }
+
+    pub fn equivalent_to(&self, _another_ast: &RegexAst) -> bool {
+        todo!()
+    }
+}
+
 impl Display for RegexAst {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        // TODO reduce extra parentheses; for example, write (a|b)* instead of ((a|b))*
         match self {
             RegexAst::Epsilon => write!(f, "ε"),
             RegexAst::Literal(a) => a.fmt(f),
@@ -104,6 +165,62 @@ impl Display for RegexAst {
 #[cfg(test)]
 mod tests {
     use crate::regex::{RegexAst, Alphabet};
+
+    #[test]
+    fn str_to_alphabets() {
+        assert_eq!(
+            Alphabet::from_str("ABCJ").unwrap(),
+            vec![Alphabet::A, Alphabet::B, Alphabet::C, Alphabet::J]
+        );
+
+        assert_eq!(
+            Alphabet::from_str("abcj").unwrap(),
+            vec![Alphabet::A, Alphabet::B, Alphabet::C, Alphabet::J]
+        );
+
+        assert_eq!(
+            Alphabet::from_str("abCg").unwrap(),
+            vec![Alphabet::A, Alphabet::B, Alphabet::C, Alphabet::G]
+        )
+    }
+
+    #[test]
+    #[should_panic]
+    fn str_to_alphabets_panic() {
+        Alphabet::from_str("Z").unwrap();
+    }
+
+    #[test]
+    fn str_to_regex_ast() {
+        assert_eq!(
+            RegexAst::from_str("abc").unwrap(),
+            RegexAst::Concatenation(vec![RegexAst::Literal(Alphabet::A), RegexAst::Literal(Alphabet::B), RegexAst::Literal(Alphabet::C), ])
+        );
+
+        assert_eq!(
+            RegexAst::from_str("ab|c").unwrap(),
+            RegexAst::Alternation(vec![
+                RegexAst::Concatenation(vec![
+                    RegexAst::Literal(Alphabet::A), RegexAst::Literal(Alphabet::B)
+                ]),
+                RegexAst::Literal(Alphabet::C)
+            ])
+        );
+
+        assert_eq!(
+            RegexAst::from_str("ab*|cd").unwrap(),
+            RegexAst::Alternation(vec![
+                RegexAst::Concatenation(vec![
+                    RegexAst::Literal(Alphabet::A),
+                    RegexAst::Star(Box::new(RegexAst::Literal(Alphabet::B))),
+                ]),
+                RegexAst::Concatenation(vec![
+                    RegexAst::Literal(Alphabet::C),
+                    RegexAst::Literal(Alphabet::D)
+                ])
+            ])
+        );
+    }
 
     #[test]
     fn fmt_regex_ast() {
