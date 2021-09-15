@@ -17,20 +17,4 @@
  *
  */
 
-#![allow(incomplete_features)]
-// Yeah!
-// <const N: {Integer}>: where Foo<{N + 1}>
-//  ~~~~~~~~~~~~~~~~~~             ~~~~~~~
-//  const generics (stable)        generic_const_exprs
-#![feature(generic_const_exprs)]
-// let foo = ...;
-// println!("{foo}");
-//          ~~~~~~~ format args capture (seem to be C#)
-#![feature(format_args_capture)]
-
-pub mod concepts;
-mod nfa;
-pub mod notification;
-pub mod parser;
-pub mod regex;
-pub mod response;
+pub mod nfa_manipulations;

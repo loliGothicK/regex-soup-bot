@@ -17,6 +17,7 @@
  *
  */
 
+use super::super::nfa::nfa_manipulations;
 use anyhow::anyhow;
 use automata::nfa::Nfa;
 use combine::{choice, parser, unexpected_any, value, ParseError, Parser, Stream};
@@ -205,7 +206,25 @@ impl RegexAst {
     }
 
     fn compile_to_nfa(&self) -> Nfa<Alphabet> {
-        todo!()
+        match self {
+            RegexAst::Epsilon => nfa_manipulations::epsilon(),
+            RegexAst::Literal(a) => nfa_manipulations::literal(*a),
+            RegexAst::Star(ast) => nfa_manipulations::star(&ast.compile_to_nfa()),
+            RegexAst::Concatenation(asts) => {
+                let compiled_asts = asts
+                    .iter()
+                    .map(|ast| ast.compile_to_nfa())
+                    .collect::<Vec<_>>();
+                nfa_manipulations::concat_all(&compiled_asts)
+            }
+            RegexAst::Alternation(asts) => {
+                let compiled_asts = asts
+                    .iter()
+                    .map(|ast| ast.compile_to_nfa())
+                    .collect::<Vec<_>>();
+                nfa_manipulations::union_all(&compiled_asts)
+            }
+        }
     }
 
     /// Set of alphabets used within this AST.
@@ -288,7 +307,6 @@ impl Display for RegexAst {
 #[cfg(test)]
 mod tests {
     use crate::regex::{Alphabet, RegexAst};
-    
 
     #[test]
     fn str_to_alphabets() {
