@@ -412,6 +412,7 @@ mod tests {
                 "(a|b|c)*(a|b)(a|b)(a|b)",
                 "((a|b|c)*c(a|b)(a|b)(a|b)+)|((a|b)(a|b)(a|b)+)",
             ),
+            ("(a|b)*", "a*(ba*)*"),
         ];
         let negatives = vec![("abεc", "abbc"), ("ε", "a")];
 
