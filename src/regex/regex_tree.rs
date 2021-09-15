@@ -177,23 +177,25 @@ impl RegexAst {
         Ok(ast)
     }
 
-    /// Format the AST in a way that there cannot be any ambiguity.
-    fn fmt_with_extra_parens(&self) -> String {
+    /// Compile the current AST to a regular expression that does not use a ε.
+    fn compile_to_epsilonless_regex(&self) -> String {
         fn join_with_separator(sep: &str, asts: &[RegexAst]) -> String {
-            asts.iter().map(|ast| ast.fmt_with_extra_parens()).join(sep)
+            asts.iter()
+                .map(|ast| ast.compile_to_epsilonless_regex())
+                .join(sep)
         }
 
         match self {
             RegexAst::Epsilon => "(.{0})".to_owned(),
             RegexAst::Literal(a) => format!("{}", a),
-            RegexAst::Star(ast) => format!("({})*", (*ast).fmt_with_extra_parens()),
+            RegexAst::Star(ast) => format!("({})*", (*ast).compile_to_epsilonless_regex()),
             RegexAst::Concatenation(asts) => format!("({})", join_with_separator("", asts)),
             RegexAst::Alternation(asts) => format!("({})", join_with_separator("|", asts)),
         }
     }
 
     pub fn matches(&self, input: &[Alphabet]) -> bool {
-        let regex = format!("^({})$", self.fmt_with_extra_parens());
+        let regex = format!("^({})$", self.compile_to_epsilonless_regex());
         let compiled = regex::Regex::new(&regex).unwrap();
         let input_str = input.iter().map(|a| format!("{}", a)).join("");
 
