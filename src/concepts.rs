@@ -30,7 +30,7 @@ pub trait Satisfied {}
 /// ```
 /// #![allow(incomplete_features)]
 /// #![feature(generic_const_exprs)]
-/// use mitama_bot::concepts::{Condition, Satisfied};
+/// use regexsoup::concepts::{Condition, Satisfied};
 ///
 /// fn foo<const Size: usize>(_arr: &[i32; Size])
 /// where
