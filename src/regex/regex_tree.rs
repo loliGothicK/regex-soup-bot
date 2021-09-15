@@ -182,7 +182,7 @@ impl RegexAst {
         }
 
         match self {
-            RegexAst::Epsilon => "ε".to_owned(),
+            RegexAst::Epsilon => "(.{0})".to_owned(),
             RegexAst::Literal(a) => format!("{}", a),
             RegexAst::Star(ast) => format!("({})*", (*ast).fmt_with_extra_parens()),
             RegexAst::Concatenation(asts) => format!("({})", join_with_separator("", asts)),
@@ -287,6 +287,37 @@ mod tests {
                 ])
             ])
         );
+    }
+
+    #[test]
+    fn regex_ast_matches() {
+        let positives = vec![
+            ("ab|c", "ab"),
+            ("ab|c", "c"),
+            ("ε|a", ""),
+            ("ε|a", "a"),
+            ("a*bεcc*", "bc"),
+            ("a*bεcc*", "aabccc"),
+            ("ε", ""),
+            ("ε*", ""),
+        ];
+        let negatives = vec![
+            ("ε|a", "ab"),
+            ("ε|aaa*", "a"),
+            ("a*bεcc*", "aac"),
+        ];
+
+        for (regex_str, input_str) in positives {
+            let ast = RegexAst::parse_str(regex_str).unwrap();
+            let input = Alphabet::vec_from_str(input_str).unwrap();
+            assert!(ast.matches(&input), "The expression \"{}\" should match \"{}\"", regex_str, input_str)
+        }
+
+        for (regex_str, input_str) in negatives {
+            let ast = RegexAst::parse_str(regex_str).unwrap();
+            let input = Alphabet::vec_from_str(input_str).unwrap();
+            assert!(!ast.matches(&input), "The expression \"{}\" should not match \"{}\"", regex_str, input_str)
+        }
     }
 
     #[test]
