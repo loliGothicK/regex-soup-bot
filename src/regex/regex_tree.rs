@@ -19,8 +19,9 @@
 
 use std::vec::Vec;
 use std::fmt::{Display, Formatter};
+use itertools::Itertools;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Alphabet {
     A,
     B,
@@ -41,7 +42,7 @@ pub enum Alphabet {
 /// is very uninteresting. We therefore restrict ourselves in nonempty regular languages,
 /// and the class of regular expressions corresponding to this language class will not require ∅ as a
 /// constant symbol. The proof is by a simple induction over set of regular expressions.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum RegexAst {
     /// The expression that matches the empty string
     Epsilon,
@@ -69,8 +70,99 @@ impl RegexAst {
     }
 }
 
-impl Display for RegexAst {
-    fn fmt(&self, _f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
+impl Display for Alphabet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Alphabet::A => write!(f, "a"),
+            Alphabet::B => write!(f, "b"),
+            Alphabet::C => write!(f, "c"),
+            Alphabet::D => write!(f, "d"),
+            Alphabet::E => write!(f, "e"),
+            Alphabet::F => write!(f, "f"),
+            Alphabet::G => write!(f, "g"),
+            Alphabet::H => write!(f, "h"),
+            Alphabet::I => write!(f, "i"),
+            Alphabet::J => write!(f, "j"),
+        }
     }
 }
+
+impl Display for RegexAst {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RegexAst::Epsilon => write!(f, "ε"),
+            RegexAst::Literal(a) => a.fmt(f),
+            RegexAst::Star(ast) => write!(f, "({})*", ast),
+            RegexAst::Concatenation(asts) =>
+                write!(f, "({})", asts.iter().map(|ast| format!("{}", ast)).join("")),
+            RegexAst::Alternation(asts) =>
+                write!(f, "({})", asts.iter().map(|ast| format!("{}", ast)).join("|")),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::regex::{RegexAst, Alphabet};
+
+    #[test]
+    fn fmt_regex_ast() {
+        assert_eq!("(abε)",
+                   format!("{}",
+                           RegexAst::Concatenation(vec![
+                               RegexAst::Literal(Alphabet::A),
+                               RegexAst::Literal(Alphabet::B),
+                               RegexAst::Epsilon,
+                           ])
+                   ));
+
+        assert_eq!("(a|b|ε)",
+                   format!("{}",
+                           RegexAst::Alternation(vec![
+                               RegexAst::Literal(Alphabet::A),
+                               RegexAst::Literal(Alphabet::B),
+                               RegexAst::Epsilon,
+                           ])
+                   ));
+
+        assert_eq!("((a|g))*",
+                   format!("{}",
+                           RegexAst::Star(Box::new(
+                               RegexAst::Alternation(vec![
+                                   RegexAst::Literal(Alphabet::A),
+                                   RegexAst::Literal(Alphabet::G),
+                               ])
+                           ))
+                   ));
+
+        assert_eq!("((a|(bc)))*",
+                   format!("{}",
+                           RegexAst::Star(Box::new(
+                               RegexAst::Alternation(vec![
+                                   RegexAst::Literal(Alphabet::A),
+                                   RegexAst::Concatenation(vec![
+                                       RegexAst::Literal(Alphabet::B),
+                                       RegexAst::Literal(Alphabet::C),
+                                   ]),
+                               ])
+                           ))
+                   ));
+
+        assert_eq!("(((a|c)|(bc)))*",
+                   format!("{}",
+                           RegexAst::Star(Box::new(
+                               RegexAst::Alternation(vec![
+                                   RegexAst::Alternation(vec![
+                                       RegexAst::Literal(Alphabet::A),
+                                       RegexAst::Literal(Alphabet::C)
+                                   ]),
+                                   RegexAst::Concatenation(vec![
+                                       RegexAst::Literal(Alphabet::B),
+                                       RegexAst::Literal(Alphabet::C),
+                                   ]),
+                               ])
+                           ))
+                   ));
+    }
+}
+
