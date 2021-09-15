@@ -47,6 +47,8 @@ pub enum RegexAst {
     Epsilon,
     /// An expression that matches an alphabetic literal
     Literal(Alphabet),
+    /// An expression that matches a repetition of words matching inner expression
+    Star(Box<RegexAst>),
     /// An expression that matches if all expressions match successively
     Concatenation(Vec<RegexAst>),
     /// An expression that matches if one of expressions matches
