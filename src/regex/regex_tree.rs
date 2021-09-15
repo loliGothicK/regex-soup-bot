@@ -22,7 +22,6 @@ use combine::{choice, parser, unexpected_any, value, ParseError, Parser, Stream}
 use itertools::Itertools;
 use parser::char::{char, letter};
 use std::{
-    borrow::Borrow,
     fmt::{Display, Formatter},
     vec::Vec,
 };
@@ -54,7 +53,7 @@ impl Alphabet {
             'h' | 'H' => Ok(Alphabet::H),
             'i' | 'I' => Ok(Alphabet::I),
             'j' | 'J' => Ok(Alphabet::J),
-            _ => Err(anyhow!("Character {input} is not a valid Alphabet")),
+            _ => Err(anyhow!("Character {} is not a valid Alphabet", input)),
         }
     }
 
