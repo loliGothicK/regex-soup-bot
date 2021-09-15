@@ -58,7 +58,10 @@ impl Alphabet {
     }
 
     pub fn vec_from_str(string: &str) -> anyhow::Result<Vec<Alphabet>> {
-        string.chars().map(|c| Self::from_char(&c)).collect::<anyhow::Result<Vec<_>>>()
+        string
+            .chars()
+            .map(|c| Self::from_char(&c))
+            .collect::<anyhow::Result<Vec<_>>>()
     }
 }
 
@@ -300,22 +303,28 @@ mod tests {
             ("ε", ""),
             ("ε*", ""),
         ];
-        let negatives = vec![
-            ("ε|a", "ab"),
-            ("ε|aaa*", "a"),
-            ("a*bεcc*", "aac"),
-        ];
+        let negatives = vec![("ε|a", "ab"), ("ε|aaa*", "a"), ("a*bεcc*", "aac")];
 
         for (regex_str, input_str) in positives {
             let ast = RegexAst::parse_str(regex_str).unwrap();
             let input = Alphabet::vec_from_str(input_str).unwrap();
-            assert!(ast.matches(&input), "The expression \"{}\" should match \"{}\"", regex_str, input_str)
+            assert!(
+                ast.matches(&input),
+                "The expression \"{}\" should match \"{}\"",
+                regex_str,
+                input_str
+            )
         }
 
         for (regex_str, input_str) in negatives {
             let ast = RegexAst::parse_str(regex_str).unwrap();
             let input = Alphabet::vec_from_str(input_str).unwrap();
-            assert!(!ast.matches(&input), "The expression \"{}\" should not match \"{}\"", regex_str, input_str)
+            assert!(
+                !ast.matches(&input),
+                "The expression \"{}\" should not match \"{}\"",
+                regex_str,
+                input_str
+            )
         }
     }
 
