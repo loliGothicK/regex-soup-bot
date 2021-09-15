@@ -20,4 +20,5 @@
 mod generate_quiz;
 mod regex_tree;
 
+pub use generate_quiz::*;
 pub use regex_tree::*;
