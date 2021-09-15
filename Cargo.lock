@@ -69,6 +69,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
+name = "automata"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "009691a9c5eac4b790d6a25112c225557e7e2797a736e6c720acb716589eaf7c"
+
+[[package]]
 name = "backtrace"
 version = "0.3.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -805,6 +811,7 @@ name = "regexsoup"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "automata",
  "boolinator",
  "combine",
  "counted-array",

@@ -18,15 +18,17 @@
  */
 
 use anyhow::anyhow;
+use automata::nfa::Nfa;
 use combine::{choice, parser, unexpected_any, value, ParseError, Parser, Stream};
 use itertools::Itertools;
 use parser::char::{char, letter};
 use std::{
+    collections::HashSet,
     fmt::{Display, Formatter},
     vec::Vec,
 };
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Hash, Eq, PartialOrd, Ord)]
 pub enum Alphabet {
     A,
     B,
@@ -202,8 +204,63 @@ impl RegexAst {
         compiled.is_match(&input_str)
     }
 
-    pub fn equivalent_to(&self, _another_ast: &RegexAst) -> bool {
+    fn compile_to_nfa(&self) -> Nfa<Alphabet> {
         todo!()
+    }
+
+    /// Set of alphabets used within this AST.
+    fn used_alphabets(&self) -> HashSet<Alphabet> {
+        let mut accum = HashSet::new();
+        let mut exprs_to_process = vec![self];
+
+        while !exprs_to_process.is_empty() {
+            let to_process = exprs_to_process.pop().unwrap();
+            match to_process {
+                RegexAst::Epsilon => {}
+                RegexAst::Literal(a) => {
+                    accum.insert(*a);
+                }
+                RegexAst::Star(ast) => exprs_to_process.push(ast),
+                RegexAst::Concatenation(asts) => exprs_to_process.extend(asts),
+                RegexAst::Alternation(asts) => exprs_to_process.extend(asts),
+            }
+        }
+
+        accum
+    }
+
+    pub fn equivalent_to(&self, another: &RegexAst) -> bool {
+        let nfa_1 = self.compile_to_nfa();
+        let nfa_2 = another.compile_to_nfa();
+
+        let alphabet_extension = self.used_alphabets();
+
+        if alphabet_extension != another.used_alphabets() {
+            // Proposition: A word containing a letter α is never accepted by RegexAst `r` if
+            //              r does not contain α.
+            //   Proof: By a straightforward induction on `r`.
+            //
+            // Proposition: If a RegexAst `r` contains a literal α, then there exists a word
+            //              containing α that is accepted by `r`.
+            //   Proof: Base case is immediate.
+            //          For inductive part, notice that RegexAst always corresponds to a
+            //          nonempty language, so by case-wise analysis
+            //          we can always construct such a word.
+            //
+            // Corollary: if two RegexAst have different set of used_alphabets, they are not equivalent.
+            return false;
+        }
+
+        let dfa_1 = nfa_1.into_dfa(alphabet_extension.clone());
+        let dfa_2 = nfa_2.into_dfa(alphabet_extension);
+
+        // Pair two DFAs with the decider function (_ && !_).
+        // The decider function will essentially create a DFA that recognizes the intersection of
+        // `L(dfa_1)` and `Complement(L(dfa_2))`.
+        // Therefore, emptiness test done by `pair_empty` will check that
+        // "there is some word recognized by either dfa_1 or dfa_2 but not by the other".
+        // So by negating this result we are done.
+        !dfa_1.pair_empty(&dfa_2, &|final_in_1, final_in_2| final_in_1 && !final_in_2)
     }
 }
 
@@ -231,6 +288,7 @@ impl Display for RegexAst {
 #[cfg(test)]
 mod tests {
     use crate::regex::{Alphabet, RegexAst};
+    
 
     #[test]
     fn str_to_alphabets() {
@@ -397,6 +455,27 @@ mod tests {
                 ])))
             )
         );
+    }
+
+    #[test]
+    fn regex_ast_used_alphabets() {
+        let pairs = vec![("(agb|c*)g", "abcg"), ("agb|c*g", "abcg")];
+
+        for (regex_str, alphabets_str) in pairs {
+            let ast = RegexAst::parse_str(regex_str).unwrap();
+            let alphabets = Alphabet::vec_from_str(alphabets_str)
+                .unwrap()
+                .into_iter()
+                .collect();
+
+            assert_eq!(
+                ast.used_alphabets(),
+                alphabets,
+                r#"Alphabets used in "{}" should be "{:?}""#,
+                ast,
+                alphabets
+            )
+        }
     }
 
     #[test]
