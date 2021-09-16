@@ -48,7 +48,7 @@ impl<A: Alphabet> NfaData<A> {
         NfaData {
             max_index: 0,
             edges: vec![],
-            finals: vec![]
+            finals: vec![],
         }
     }
 

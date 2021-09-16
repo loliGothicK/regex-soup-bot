@@ -211,17 +211,11 @@ impl RegexAst {
             RegexAst::Literal(a) => NfaData::literal(*a),
             RegexAst::Star(ast) => NfaData::star(&ast.compile_to_nfa_data()),
             RegexAst::Concatenation(asts) => {
-                let compiled_asts = asts
-                    .iter()
-                    .map(|ast| ast.compile_to_nfa_data())
-                    .collect::<Vec<_>>();
+                let compiled_asts = asts.iter().map(|ast| ast.compile_to_nfa_data()).collect();
                 NfaData::concat_all(compiled_asts)
             }
             RegexAst::Alternation(asts) => {
-                let compiled_asts = asts
-                    .iter()
-                    .map(|ast| ast.compile_to_nfa_data())
-                    .collect::<Vec<_>>();
+                let compiled_asts = asts.iter().map(|ast| ast.compile_to_nfa_data()).collect();
                 NfaData::union_all(compiled_asts)
             }
         }
@@ -508,10 +502,8 @@ mod tests {
         let positives = vec![
             ("abεc", "εabc"),
             ("ε|εεε*", "ε"),
-            (
-                "(a|b|c)*(a|b)(a|b)(a|b)",
-                "((a|b|c)*c(a|b)(a|b)(a|b)(a|b)*)|((a|b)(a|b)(a|b)(a|b)*)",
-            ),
+            ("(a|b)*a", "(a|b)*baa*|aa*"),
+            ("(a|b|c)*(a|b)", "((a|b|c)*c(a|b)(a|b)*)|((a|b)(a|b)*)"),
             ("(a|b)*", "a*(ba*)*"),
         ];
         let negatives = vec![("abεc", "abbc"), ("ε", "a")];
