@@ -29,7 +29,7 @@ use std::{
 };
 use strum_macros::EnumIter;
 
-#[derive(EnumIter, Copy, Clone, Debug, Hash, PartialEq, Hash, Eq, PartialOrd, Ord)]
+#[derive(EnumIter, Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Alphabet {
     A,
     B,
