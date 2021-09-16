@@ -34,6 +34,7 @@ use serenity::{
     utils::Colour,
 };
 use std::{
+    convert::TryInto,
     num::NonZeroU8,
     sync::{Arc, Mutex},
 };
@@ -121,7 +122,7 @@ pub struct Container {
 impl Quiz {
     pub fn new() -> Self {
         Self {
-            regex: randomly_generate(&Difficulty(3u8)),
+            regex: randomly_generate(&Difficulty(3u8.try_into().unwrap())),
             history: indexmap! {},
             participants: indexset! {},
         }
@@ -129,7 +130,7 @@ impl Quiz {
 
     pub fn new_with_difficulty(difficulty: NonZeroU8) -> Self {
         Self {
-            regex: randomly_generate(&Difficulty(difficulty.into())),
+            regex: randomly_generate(&Difficulty(difficulty)),
             history: indexmap! {},
             participants: indexset! {},
         }

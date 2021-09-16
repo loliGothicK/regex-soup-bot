@@ -20,6 +20,11 @@ counted-array = "0.1.2"
 tokio = { version = "1.5.0", features = ["macros", "rt-multi-thread"] }
 regex = "1.5.4"
 combine = "4.6.1"
+rustomaton = { git = "https://github.com/kory33/rustomaton", rev = "642647b" }
+strum = "0.21.0"
+strum_macros = "0.21.1"
+rand_distr = "0.4.1"
+rand = "0.8.4"
 
 [dependencies.serenity]
 git = "https://github.com/serenity-rs/serenity.git"
