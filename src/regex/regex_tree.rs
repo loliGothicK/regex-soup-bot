@@ -63,6 +63,10 @@ impl Alphabet {
             .map(|c| Self::from_char(&c))
             .collect::<anyhow::Result<Vec<_>>>()
     }
+
+    pub fn slice_to_plain_string(alphabets: &[Alphabet]) -> String {
+        alphabets.iter().map(|a| format!("{}", a)).join("")
+    }
 }
 
 impl Display for Alphabet {
@@ -200,12 +204,15 @@ impl RegexAst {
         }
     }
 
-    pub fn matches(&self, input: &[Alphabet]) -> bool {
+    pub fn compile_to_string_regex(&self) -> regex::Regex {
         let regex = format!("^({})$", self.compile_to_epsilonless_regex());
-        let compiled = regex::Regex::new(&regex).unwrap();
-        let input_str = input.iter().map(|a| format!("{}", a)).join("");
 
-        compiled.is_match(&input_str)
+        regex::Regex::new(&regex).unwrap()
+    }
+
+    pub fn matches(&self, input: &[Alphabet]) -> bool {
+        self.compile_to_string_regex()
+            .is_match(&Alphabet::slice_to_plain_string(input))
     }
 
     pub fn equivalent_to(&self, _another_ast: &RegexAst) -> bool {
