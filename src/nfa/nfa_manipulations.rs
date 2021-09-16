@@ -26,7 +26,7 @@ use itertools::Itertools;
 /// This has different structure compared to [automata::nfa::Nfa], but
 /// can be used to construct larger NFAs and then finally convert everything to [automata::nfa::Nfa].
 #[derive(Clone, Debug)]
-pub struct NfaData<A: Alphabet> {
+pub struct NfaData<A: Copy> {
     /// Maximum index present in the NFA.
     /// Notice that NFA is nonempty, so this is always greater than or equal to 0.
     ///
@@ -42,7 +42,7 @@ pub struct NfaData<A: Alphabet> {
     finals: Vec<usize>,
 }
 
-impl<A: Alphabet> NfaData<A> {
+impl<A: Copy> NfaData<A> {
     /// The NFA that accepts no word.
     pub fn empty() -> NfaData<A> {
         NfaData {
