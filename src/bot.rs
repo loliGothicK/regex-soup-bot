@@ -33,6 +33,7 @@ use serenity::{
 };
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
+use std::convert::TryInto;
 
 /// Struct that holds sender and receiver
 pub struct Tsx<T> {
@@ -122,7 +123,7 @@ pub enum QueryResult {
 impl Quiz {
     pub fn new() -> Self {
         Self {
-            regex: regex::randomly_generate(&regex::Difficulty(3u8.into())),
+            regex: regex::randomly_generate(&regex::Difficulty(3u8.try_into().unwrap())),
             history: indexset! {},
             participants: indexset! {},
         }
