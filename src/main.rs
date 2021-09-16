@@ -310,7 +310,7 @@ impl EventHandler for Handler {
                                                 let is_match = quiz.guess(&valid_input);
                                                 (
                                                     format!(
-                                                        "{original_input} => {}",
+                                                        "`{original_input}` => {}",
                                                         if is_match { "AC" } else { "WA" }
                                                     ),
                                                     is_match,
