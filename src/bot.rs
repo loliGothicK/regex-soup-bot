@@ -143,12 +143,7 @@ impl Quiz {
         let is_match = self.regex.matches(input);
         let input_string = Alphabet::slice_to_plain_string(input);
         self.history
-            .entry(
-                input_string
-                    .is_empty()
-                    .then(|| input_string)
-                    .unwrap_or_else(|| r#""""#.to_string()),
-            )
+            .entry(input_string)
             .or_insert((if is_match { "Yes" } else { "No" }).to_string());
         is_match
     }
@@ -174,8 +169,11 @@ impl Quiz {
     pub fn get_query_history(&self) -> CreateEmbed {
         let mut embed = CreateEmbed::default();
         embed.colour(Colour::DARK_BLUE).title("query history");
-        for (query, result) in &self.history {
-            embed.field(query, result, true);
+        if self.history.is_empty() {
+            embed.field("Nothing to show", "-", false);
+        }
+        for (query, result) in self.history.iter() {
+            embed.field(query.eq("").then(|| "ε").unwrap_or(query), dbg!(result.clone()), true);
         }
         embed
     }
