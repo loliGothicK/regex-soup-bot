@@ -280,6 +280,105 @@ impl RegexAst {
 
         nfa_1.eq(&nfa_2)
     }
+
+    //region flattening oeprations
+
+    fn flatten_alternations(&self) -> Self {
+        fn apply_to_ast_vec(vec: &[RegexAst]) -> Vec<RegexAst> {
+            vec.iter().map(|ast| ast.flatten_alternations()).collect()
+        }
+
+        match self {
+            RegexAst::Epsilon | RegexAst::Literal(_) => self.clone(),
+            RegexAst::Star(ast) => RegexAst::Star(Box::new(ast.flatten_alternations())),
+            RegexAst::Concatenation(asts) => RegexAst::Concatenation(apply_to_ast_vec(asts)),
+            RegexAst::Alternation(asts) if asts.len() == 1 => {
+                asts.first().unwrap().flatten_alternations()
+            }
+            RegexAst::Alternation(asts) => RegexAst::Alternation(
+                apply_to_ast_vec(asts)
+                    .into_iter()
+                    .flat_map(|ast| match ast {
+                        RegexAst::Alternation(asts) => asts,
+                        _ => vec![ast],
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    fn flatten_consecutive_concatenations(&self) -> Self {
+        fn apply_to_ast_vec(vec: &[RegexAst]) -> Vec<RegexAst> {
+            vec.iter().map(|ast| ast.flatten_alternations()).collect()
+        }
+
+        match self {
+            RegexAst::Epsilon | RegexAst::Literal(_) => self.clone(),
+            RegexAst::Star(ast) => {
+                RegexAst::Star(Box::new(ast.flatten_consecutive_concatenations()))
+            }
+            RegexAst::Concatenation(asts) if asts.len() == 1 => {
+                asts.first().unwrap().flatten_consecutive_concatenations()
+            }
+            RegexAst::Concatenation(asts) => RegexAst::Concatenation(
+                apply_to_ast_vec(asts)
+                    .into_iter()
+                    .flat_map(|ast| match ast {
+                        RegexAst::Concatenation(asts) => asts,
+                        _ => vec![ast],
+                    })
+                    .collect(),
+            ),
+            RegexAst::Alternation(asts) => RegexAst::Alternation(apply_to_ast_vec(asts)),
+        }
+    }
+
+    fn flatten_consecutive_stars(&self) -> Self {
+        fn apply_to_ast_vec(vec: &[RegexAst]) -> Vec<RegexAst> {
+            vec.iter()
+                .map(|ast| ast.flatten_consecutive_stars())
+                .collect()
+        }
+
+        match self {
+            RegexAst::Epsilon | RegexAst::Literal(_) => self.clone(),
+            RegexAst::Star(ast) => {
+                let flattened_child = ast.flatten_consecutive_stars();
+                match flattened_child {
+                    RegexAst::Star(grand_child) => *grand_child,
+                    _ => RegexAst::Star(Box::new(flattened_child)),
+                }
+            }
+            RegexAst::Concatenation(asts) => RegexAst::Concatenation(apply_to_ast_vec(asts)),
+            RegexAst::Alternation(asts) => RegexAst::Alternation(apply_to_ast_vec(asts)),
+        }
+    }
+
+    /// Flattens the AST.
+    ///
+    /// This operation applies the following transformations:
+    ///
+    ///  * When Alternation is a direct child of another Alternation, flatten it.
+    ///    For example, `(a|(b|c))` will be flattened into `(a|b|c)`.
+    ///  * When Concatenation is a direct child of another Concatenation, flatten it.
+    ///    For example, `(a(bc))` will be flattened into `(abc)`.
+    ///  * When Star is a direct child of another Star, flatten it.
+    ///    For example, `(a*)*` will be flattened into `(a*)`.
+    ///  * When Alternation contains a singleton vector, flatten it.
+    ///    For example, `Alternation(vec![ab])` will be flattened into `ab`.
+    ///  * When Concatenation contains a singleton vector, flatten it.
+    ///    For example, `Concatenation(vec![a|b])` will be flattened into `a|b`.
+    ///
+    /// This operation preserves the regular expression up to equivalence.
+    /// That is, [matches] returns true on the original AST if and only if
+    /// it returns true on the returned AST.
+    pub fn flatten(&self) -> Self {
+        self.flatten_alternations()
+            .flatten_consecutive_concatenations()
+            .flatten_consecutive_stars()
+    }
+
+    //endregion
 }
 
 impl Display for RegexAst {
@@ -533,5 +632,28 @@ mod tests {
                 ast_2
             )
         }
+    }
+
+    #[test]
+    fn regex_ast_flattening() {
+        assert_eq!(
+            RegexAst::parse_str("a(b(a|(b|(c|d))))").unwrap().flatten(),
+            RegexAst::parse_str("ab(a|b|c|d)").unwrap()
+        );
+
+        assert_eq!(
+            RegexAst::parse_str("(((a)*)*)*").unwrap().flatten(),
+            RegexAst::parse_str("a*").unwrap()
+        );
+
+        assert_eq!(
+            RegexAst::Alternation(vec![RegexAst::parse_str("(((a)*)*)*").unwrap()]).flatten(),
+            RegexAst::parse_str("a*").unwrap()
+        );
+
+        assert_eq!(
+            RegexAst::Concatenation(vec![RegexAst::parse_str("(((a)*)*)*").unwrap()]).flatten(),
+            RegexAst::parse_str("a*").unwrap()
+        );
     }
 }

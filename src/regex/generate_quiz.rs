@@ -225,7 +225,7 @@ pub fn randomly_generate(diff: &Difficulty) -> RegexAst {
         let ast = generate_ast_smaller_than(&alphabets, MAX_QUIZ_TREE_SIZE);
 
         if good_as_a_quiz_problem(&alphabets, &ast) {
-            return ast;
+            return ast.flatten();
         }
     }
 }
