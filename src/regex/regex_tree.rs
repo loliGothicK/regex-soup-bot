@@ -21,12 +21,14 @@ use anyhow::anyhow;
 use combine::{choice, parser, unexpected_any, value, ParseError, Parser, Stream};
 use itertools::Itertools;
 use parser::char::{char, letter};
+use rustomaton::{automaton::Buildable, nfa::NFA};
 use std::{
+    collections::HashSet,
     fmt::{Display, Formatter},
     vec::Vec,
 };
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Hash, Eq, PartialOrd, Ord)]
 pub enum Alphabet {
     A,
     B,
@@ -208,8 +210,67 @@ impl RegexAst {
         compiled.is_match(&input_str)
     }
 
-    pub fn equivalent_to(&self, _another_ast: &RegexAst) -> bool {
-        todo!()
+    fn compile_to_nfa(&self, alphabets: HashSet<Alphabet>) -> NFA<Alphabet> {
+        match self {
+            RegexAst::Epsilon => NFA::new_length(alphabets, 0),
+            RegexAst::Literal(a) => NFA::new_matching(alphabets, &[*a]),
+            RegexAst::Star(ast) => ast.compile_to_nfa(alphabets).kleene(),
+            RegexAst::Concatenation(asts) => asts
+                .iter()
+                .map(|ast| ast.compile_to_nfa(alphabets.clone()))
+                .fold1(|nfa1, nfa2| nfa1.concatenate(nfa2))
+                .unwrap(),
+            RegexAst::Alternation(asts) => asts
+                .iter()
+                .map(|ast| ast.compile_to_nfa(alphabets.clone()))
+                .fold1(|nfa1, nfa2| nfa1.unite(nfa2))
+                .unwrap(),
+        }
+    }
+
+    /// Set of alphabets used within this AST.
+    fn used_alphabets(&self) -> HashSet<Alphabet> {
+        let mut accum = HashSet::new();
+        let mut exprs_to_process = vec![self];
+
+        while !exprs_to_process.is_empty() {
+            let to_process = exprs_to_process.pop().unwrap();
+            match to_process {
+                RegexAst::Epsilon => {}
+                RegexAst::Literal(a) => {
+                    accum.insert(*a);
+                }
+                RegexAst::Star(ast) => exprs_to_process.push(ast),
+                RegexAst::Concatenation(asts) => exprs_to_process.extend(asts),
+                RegexAst::Alternation(asts) => exprs_to_process.extend(asts),
+            }
+        }
+
+        accum
+    }
+
+    pub fn equivalent_to(&self, another: &RegexAst) -> bool {
+        let used_alphabets = self.used_alphabets();
+        if used_alphabets != another.used_alphabets() {
+            // Proposition: A word containing a letter α is never accepted by RegexAst `r` if
+            //              r does not contain α.
+            //   Proof: By a straightforward induction on `r`.
+            //
+            // Proposition: If a RegexAst `r` contains a literal α, then there exists a word
+            //              containing α that is accepted by `r`.
+            //   Proof: Base case is immediate.
+            //          For inductive part, notice that RegexAst always corresponds to a
+            //          nonempty language, so by case-wise analysis
+            //          we can always construct such a word.
+            //
+            // Corollary: if two RegexAst have different set of used_alphabets, they are not equivalent.
+            return false;
+        }
+
+        let nfa_1 = self.compile_to_nfa(used_alphabets.clone());
+        let nfa_2 = another.compile_to_nfa(used_alphabets);
+
+        nfa_1.eq(&nfa_2)
     }
 }
 
@@ -403,5 +464,66 @@ mod tests {
                 ])))
             )
         );
+    }
+
+    #[test]
+    fn regex_ast_used_alphabets() {
+        let pairs = vec![("(agb|c*)g", "abcg"), ("agb|c*g", "abcg")];
+
+        for (regex_str, alphabets_str) in pairs {
+            let ast = RegexAst::parse_str(regex_str).unwrap();
+            let alphabets = Alphabet::vec_from_str(alphabets_str)
+                .unwrap()
+                .into_iter()
+                .collect();
+
+            assert_eq!(
+                ast.used_alphabets(),
+                alphabets,
+                r#"Alphabets used in "{}" should be "{:?}""#,
+                ast,
+                alphabets
+            )
+        }
+    }
+
+    #[test]
+    fn regex_ast_equivalence() {
+        fn compile_to_regex_ast(regex_str: &str) -> RegexAst {
+            RegexAst::parse_str(regex_str).unwrap()
+        }
+
+        let positives = vec![
+            ("abεc", "εabc"),
+            ("ε|εεε*", "ε"),
+            ("(a|b)*a", "(a|b)*baa*|aa*"),
+            ("(a|b|c)*(a|b)", "((a|b|c)*c(a|b)(a|b)*)|((a|b)(a|b)*)"),
+            ("(a|b)*", "a*(ba*)*"),
+        ];
+        let negatives = vec![("abεc", "abbc"), ("ε", "a")];
+
+        for (regex_str_1, regex_str_2) in positives {
+            let ast_1 = compile_to_regex_ast(regex_str_1);
+            let ast_2 = compile_to_regex_ast(regex_str_2);
+
+            assert!(
+                ast_1.equivalent_to(&ast_2),
+                "The regular expression \"{}\" should be equivalent to \"{}\"",
+                ast_1,
+                ast_2
+            )
+        }
+
+        for (regex_str_1, regex_str_2) in negatives {
+            let ast_1 = compile_to_regex_ast(regex_str_1);
+            let ast_2 = compile_to_regex_ast(regex_str_2);
+
+            assert!(
+                !ast_1.equivalent_to(&ast_2),
+                "The regular expression \"{}\" should not be equivalent to \"{}\"",
+                ast_1,
+                ast_2
+            )
+        }
     }
 }
