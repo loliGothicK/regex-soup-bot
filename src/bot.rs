@@ -31,9 +31,11 @@ use serenity::{
         },
     },
 };
-use std::sync::{Arc, Mutex};
+use std::{
+    convert::TryInto,
+    sync::{Arc, Mutex},
+};
 use tokio::sync::mpsc::{Receiver, Sender};
-use std::convert::TryInto;
 
 /// Struct that holds sender and receiver
 pub struct Tsx<T> {
