@@ -31,7 +31,7 @@ pub struct AlphabetSet(pub Vec<Alphabet>);
 
 // constants related to generation of quizzes
 const MAX_QUIZ_TREE_SIZE: u8 = 12;
-const MINIMUM_ALLOWED_ACCEPTANCE_RATE: f64 = 0.2;
+const MINIMUM_ALLOWED_ACCEPTANCE_RATE: f64 = 0.25;
 const MAXIMUM_ALLOWED_ACCEPTANCE_RATE: f64 = 0.8;
 
 struct WordDistribution<L, A>(L, A);
@@ -239,8 +239,9 @@ mod tests {
     #[test]
     fn randomly_generate_returns() {
         println!(
-            "{:?}",
-            randomly_generate(&Difficulty(3u8.try_into().unwrap()))
+            "Generated AST\n\t{:?}\nwith estimated acceptance rate of {}",
+            ast,
+            estimate_acceptance_probability(&alphabets, &ast)
         );
     }
 }
