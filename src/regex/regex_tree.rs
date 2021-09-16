@@ -19,7 +19,6 @@
 
 use super::super::nfa::nfa_manipulations::NfaData;
 use anyhow::anyhow;
-use automata::nfa::Nfa;
 use combine::{choice, parser, unexpected_any, value, ParseError, Parser, Stream};
 use itertools::Itertools;
 use parser::char::{char, letter};
@@ -28,6 +27,8 @@ use std::{
     fmt::{Display, Formatter},
     vec::Vec,
 };
+use rustomaton::nfa::NFA;
+use rustomaton::automaton::Buildable;
 
 #[derive(Copy, Clone, Debug, PartialEq, Hash, Eq, PartialOrd, Ord)]
 pub enum Alphabet {
@@ -221,8 +222,24 @@ impl RegexAst {
         }
     }
 
-    fn compile_to_nfa(&self) -> Nfa<Alphabet> {
-        self.compile_to_nfa_data().into()
+    fn compile_to_nfa(&self, alphabets: HashSet<Alphabet>) -> NFA<Alphabet> {
+        match self {
+            RegexAst::Epsilon => NFA::new_length(alphabets, 0),
+            RegexAst::Literal(a) => NFA::new_matching(alphabets, &vec![*a]),
+            RegexAst::Star(ast) => ast.compile_to_nfa(alphabets).kleene(),
+            RegexAst::Concatenation(asts) => {
+                asts.iter()
+                    .map(|ast| ast.compile_to_nfa(alphabets.clone()))
+                    .fold1(|nfa1, nfa2| nfa1.concatenate(nfa2))
+                    .unwrap()
+            }
+            RegexAst::Alternation(asts) => {
+                asts.iter()
+                    .map(|ast| ast.compile_to_nfa(alphabets.clone()))
+                    .fold1(|nfa1, nfa2| nfa1.unite(nfa2))
+                    .unwrap()
+            }
+        }
     }
 
     /// Set of alphabets used within this AST.
@@ -247,12 +264,8 @@ impl RegexAst {
     }
 
     pub fn equivalent_to(&self, another: &RegexAst) -> bool {
-        let nfa_1 = self.compile_to_nfa();
-        let nfa_2 = another.compile_to_nfa();
-
-        let alphabet_extension = self.used_alphabets();
-
-        if alphabet_extension != another.used_alphabets() {
+        let used_alphabets = self.used_alphabets();
+        if used_alphabets != another.used_alphabets() {
             // Proposition: A word containing a letter α is never accepted by RegexAst `r` if
             //              r does not contain α.
             //   Proof: By a straightforward induction on `r`.
@@ -268,15 +281,10 @@ impl RegexAst {
             return false;
         }
 
-        let dfa_1 = nfa_1.into_dfa(alphabet_extension.clone());
-        let dfa_2 = nfa_2.into_dfa(alphabet_extension);
+        let nfa_1 = self.compile_to_nfa(used_alphabets.clone());
+        let nfa_2 = another.compile_to_nfa(used_alphabets);
 
-        // Pair two DFAs with the decider function (_ && !_).
-        // The decider function will essentially create a DFA that recognizes the intersection of
-        // `L(dfa_1)` and `Complement(L(dfa_2))`.
-        // Therefore, emptiness test done by `pair_empty` will check that
-        // "there is no word such that either dfa_1 or dfa_2 recognizes but the other does not".
-        dfa_1.pair_empty(&dfa_2, &|final_in_1, final_in_2| final_in_1 && !final_in_2)
+        nfa_1.eq(&nfa_2)
     }
 }
 

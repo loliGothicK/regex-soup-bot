@@ -17,8 +17,10 @@
  *
  */
 
-use automata::{nfa::Nfa, Alphabet};
 use itertools::Itertools;
+use rustomaton::nfa::NFA;
+use std::collections::HashSet;
+use std::iter::FromIterator;
 
 /// A representation of a nondeterministic finite automaton.
 /// States have arbitrary numbering by [usize], but the start state is fixed to 0.
@@ -211,11 +213,5 @@ impl<A: Copy> NfaData<A> {
             edges: extended_edges,
             finals: vec![0],
         }
-    }
-}
-
-impl<A: Alphabet> From<NfaData<A>> for Nfa<A> {
-    fn from(nfa_data: NfaData<A>) -> Self {
-        Nfa::from_edges(nfa_data.edges, nfa_data.finals)
     }
 }
