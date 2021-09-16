@@ -17,11 +17,11 @@
  *
  */
 
-use crate::regex;
+use crate::regex::{randomly_generate, Alphabet, Difficulty, RegexAst};
 use anyhow::anyhow;
 use indexmap::{indexmap, indexset, IndexMap, IndexSet};
 use serenity::{
-    builder::{CreateInteractionResponse, EditInteractionResponse},
+    builder::{CreateEmbed, CreateInteractionResponse, EditInteractionResponse},
     http::Http,
     model::{
         id::{ChannelId, UserId},
@@ -30,9 +30,11 @@ use serenity::{
             message_component::MessageComponentInteraction,
         },
     },
+    utils::Colour,
 };
 use std::{
     convert::TryInto,
+    num::NonZeroU8,
     sync::{Arc, Mutex},
 };
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -106,58 +108,88 @@ pub enum Msg {
 }
 
 pub struct Quiz {
-    regex: regex::RegexAst,
-    #[allow(unused)]
-    history: IndexSet<String>,
+    regex: RegexAst,
+    history: IndexMap<String, String>,
     participants: IndexSet<UserId>,
 }
 
 #[allow(dead_code)]
 pub struct Container {
-    workers: IndexMap<ChannelId, Option<Quiz>>,
-}
-
-pub enum QueryResult {
-    Yes,
-    No,
+    pub channel_map: IndexMap<ChannelId, Option<Quiz>>,
 }
 
 impl Quiz {
     pub fn new() -> Self {
+        let regex = randomly_generate(&Difficulty(3u8.try_into().unwrap()));
+        println!("{}", regex);
         Self {
-            regex: regex::randomly_generate(&regex::Difficulty(3u8.try_into().unwrap())),
-            history: indexset! {},
+            regex,
+            history: indexmap! {},
             participants: indexset! {},
         }
     }
 
-    pub async fn query(&mut self, _text: &str) -> QueryResult {
-        // TODO: converts text to Alphabet
-        let alphabets: Vec<regex::Alphabet> = Vec::new();
-        if self.regex.matches(&alphabets) {
-            QueryResult::Yes
-        } else {
-            QueryResult::No
+    pub fn new_with_difficulty(difficulty: NonZeroU8) -> Self {
+        let regex = randomly_generate(&Difficulty(difficulty));
+        println!("{}", regex);
+        Self {
+            regex,
+            history: indexmap! {},
+            participants: indexset! {},
         }
     }
 
-    pub async fn register(&mut self, user: UserId) -> anyhow::Result<()> {
+    pub fn query(&mut self, input: &[Alphabet]) -> bool {
+        let is_match = self.regex.matches(input);
+        let input_string = Alphabet::slice_to_plain_string(input);
+        self.history
+            .entry(
+                input_string
+                    .is_empty()
+                    .then(|| input_string)
+                    .unwrap_or_else(|| r#""""#.to_string()),
+            )
+            .or_insert((if is_match { "Yes" } else { "No" }).to_string());
+        is_match
+    }
+
+    pub fn register(&mut self, user: UserId) -> anyhow::Result<()> {
         self.participants
             .insert(user)
             .then(|| ())
             .ok_or_else(|| anyhow!("already registered."))
     }
 
-    pub async fn guess(&self, regexp: &str) -> anyhow::Result<bool> {
-        let ast = regex::RegexAst::parse_str(regexp)?;
-        Ok(self.regex.equivalent_to(&ast))
+    pub fn guess(&self, input: &RegexAst) -> bool {
+        self.regex.equivalent_to(input)
     }
 
-    pub async fn accepts_give_up(&mut self, user: &UserId) -> anyhow::Result<()> {
+    pub fn accepts_give_up(&mut self, user: &UserId) -> anyhow::Result<()> {
         self.participants
             .remove(user)
             .then(|| ())
             .ok_or_else(|| anyhow!("not registered"))
+    }
+
+    pub fn get_query_history(&self) -> CreateEmbed {
+        let mut embed = CreateEmbed::default();
+        embed.colour(Colour::DARK_BLUE).title("query history");
+        for (query, result) in &self.history {
+            embed.field(query, result, true);
+        }
+        embed
+    }
+
+    pub fn is_participant(&self, id: &UserId) -> bool {
+        self.participants.contains(id)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.participants.is_empty()
+    }
+
+    pub fn get_answer_regex(&self) -> RegexAst {
+        self.regex.clone()
     }
 }
 
@@ -170,7 +202,7 @@ impl Default for Quiz {
 impl Container {
     pub fn new() -> Self {
         Self {
-            workers: indexmap! {},
+            channel_map: indexmap! {},
         }
     }
 }

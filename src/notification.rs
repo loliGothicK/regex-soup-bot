@@ -64,6 +64,23 @@ impl To<String> for Notification {
     }
 }
 
+impl To<i64> for Notification {
+    fn to<T>(&self) -> anyhow::Result<i64>
+    where
+        T: SameAs<i64>,
+    {
+        if let Notification::SlashCommand(SlashCommand::Option(boxed)) = self {
+            if let OptionValue::Integer(value) = &**boxed {
+                return Ok(*value);
+            }
+        }
+        Err(anyhow::anyhow!(
+            "cannot convert self to String: {:?}",
+            &self
+        ))
+    }
+}
+
 impl To<User> for Notification {
     fn to<T>(&self) -> anyhow::Result<User>
     where
