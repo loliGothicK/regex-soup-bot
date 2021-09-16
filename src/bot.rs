@@ -173,7 +173,11 @@ impl Quiz {
             embed.field("Nothing to show", "-", false);
         }
         for (query, result) in self.history.iter() {
-            embed.field(query.eq("").then(|| "ε").unwrap_or(query), dbg!(result.clone()), true);
+            embed.field(
+                query.eq("").then(|| "ε").unwrap_or(query),
+                dbg!(result.clone()),
+                true,
+            );
         }
         embed
     }

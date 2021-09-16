@@ -304,16 +304,19 @@ impl EventHandler for Handler {
                                         |quiz| {
                                             if let Some(quiz) = quiz {
                                                 if quiz.guess(&valid_input) {
-                                                    (format!(
-                                                        indoc!{"
+                                                    (
+                                                        format!(
+                                                            indoc! {"
                                                             - `{}` => AC
                                                             - original answer is `{}`
                                                             - {} queries
                                                         "},
-                                                        original_input,
-                                                        quiz.get_answer_regex(),
-                                                        quiz.len(),
-                                                    ), true)
+                                                            original_input,
+                                                            quiz.get_answer_regex(),
+                                                            quiz.len(),
+                                                        ),
+                                                        true,
+                                                    )
                                                 } else {
                                                     (format!("`{original_input}` => WA"), false)
                                                 }
