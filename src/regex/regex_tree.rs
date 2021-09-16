@@ -227,6 +227,10 @@ impl RegexAst {
         }
     }
 
+    fn compile_to_nfa(&self) -> Nfa<Alphabet> {
+        self.compile_to_nfa_data().into()
+    }
+
     /// Set of alphabets used within this AST.
     fn used_alphabets(&self) -> HashSet<Alphabet> {
         let mut accum = HashSet::new();
@@ -249,8 +253,8 @@ impl RegexAst {
     }
 
     pub fn equivalent_to(&self, another: &RegexAst) -> bool {
-        let nfa_1: Nfa<Alphabet> = self.compile_to_nfa_data().into();
-        let nfa_2: Nfa<Alphabet> = another.compile_to_nfa_data().into();
+        let nfa_1 = self.compile_to_nfa();
+        let nfa_2 = another.compile_to_nfa();
 
         let alphabet_extension = self.used_alphabets();
 
