@@ -20,7 +20,6 @@
 use crate::regex::{randomly_generate, Alphabet, Difficulty, RegexAst};
 use anyhow::anyhow;
 use indexmap::{indexmap, indexset, IndexMap, IndexSet};
-use itertools::Itertools;
 use serenity::{
     builder::{CreateEmbed, CreateInteractionResponse, EditInteractionResponse},
     http::Http,
@@ -142,7 +141,7 @@ impl Quiz {
 
     pub fn query(&mut self, input: &[Alphabet]) -> bool {
         let is_match = self.regex.matches(input);
-        let input_string = input.iter().map(|x| format!("{x}")).join("");
+        let input_string = Alphabet::slice_to_plain_string(input);
         self.history
             .entry(
                 input_string

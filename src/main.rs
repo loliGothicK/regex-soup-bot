@@ -112,15 +112,10 @@ impl EventHandler for Handler {
                             .try_into()
                             .unwrap();
 
-                        CONTAINER
-                            .lock()
-                            .unwrap()
-                            .channel_map
-                            .entry(command.channel_id)
-                            .and_modify(|quiz| {
-                                *quiz = Some(Quiz::new_with_difficulty(difficulty));
-                            })
-                            .or_insert_with(|| Some(Quiz::new_with_difficulty(difficulty)));
+                        CONTAINER.lock().unwrap().channel_map.insert(
+                            command.channel_id,
+                            Some(Quiz::new_with_difficulty(difficulty)),
+                        );
 
                         let msg = "新しいREGガメのスープを開始します".to_string();
                         match command
@@ -394,18 +389,31 @@ impl EventHandler for Handler {
                             .unwrap()
                             .channel_map
                             .get(&command.channel_id)
-                            .unwrap()
-                            .as_ref()
-                            .map(|quiz| quiz.get_query_history())
-                            .unwrap_or_else(|| {
-                                let mut embed = CreateEmbed::default();
-                                embed.colour(Colour::DARK_RED).title("ERROR").field(
-                                    "reason: ",
-                                    "ゲームが開始してません",
-                                    false,
-                                );
-                                embed
-                            });
+                            .map_or_else(
+                                || {
+                                    let mut embed = CreateEmbed::default();
+                                    embed.colour(Colour::DARK_RED).title("ERROR").field(
+                                        "reason: ",
+                                        "ゲームが開始してません",
+                                        false,
+                                    );
+                                    embed
+                                },
+                                |quiz| {
+                                    quiz.as_ref().map_or_else(
+                                        || {
+                                            let mut embed = CreateEmbed::default();
+                                            embed.colour(Colour::DARK_RED).title("ERROR").field(
+                                                "reason: ",
+                                                "ゲームが開始してません",
+                                                false,
+                                            );
+                                            embed
+                                        },
+                                        |quiz| quiz.get_query_history(),
+                                    )
+                                },
+                            );
                         match command
                             .create_interaction_response(&ctx.http, |response| {
                                 response
@@ -441,7 +449,7 @@ impl EventHandler for Handler {
                                 |quiz| {
                                     if let Some(quiz) = quiz {
                                         quiz.register(command.user.id).map_or_else(
-                                            |_| "すでにとうとくされています".to_string(),
+                                            |_| "すでに登録されています".to_string(),
                                             |_| format!("{} is added.", command.user.name.clone()),
                                         )
                                     } else {
@@ -479,7 +487,7 @@ impl EventHandler for Handler {
                     println!("cmd: give-up");
                     let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
-                        let (msg, is_empty) = CONTAINER
+                        let (msg, end) = CONTAINER
                             .lock()
                             .unwrap()
                             .channel_map
@@ -489,20 +497,21 @@ impl EventHandler for Handler {
                                     (
                                         "まずは`start`コマンドでゲームを開始してください"
                                             .to_string(),
-                                        false,
+                                        None,
                                     )
                                 },
                                 |quiz| {
                                     if let Some(quiz) = quiz {
                                         quiz.accepts_give_up(&command.user.id).map_or_else(
-                                            |_| ("まだとうとくされていません".to_string(), false),
+                                            |_| ("まだ登録されていません".to_string(), None),
                                             |_| {
                                                 (
                                                     format!(
                                                         "{} is removed.",
                                                         command.user.name.clone()
                                                     ),
-                                                    quiz.is_empty(),
+                                                    quiz.is_empty()
+                                                        .then(|| quiz.get_answer_regex()),
                                                 )
                                             },
                                         )
@@ -510,35 +519,27 @@ impl EventHandler for Handler {
                                         (
                                             "まずは`start`コマンドでゲームを開始してください"
                                                 .to_string(),
-                                            false,
+                                            None,
                                         )
                                     }
                                 },
                             );
-                        if is_empty {
-                            let ans = CONTAINER
-                                .lock()
-                                .unwrap()
-                                .channel_map
-                                .get(&command.channel_id)
-                                .map(|x| x.as_ref().map(|quiz| quiz.get_answer_regex()));
-                            if let Some(Some(ans)) = ans {
-                                let _ = command
-                                    .create_interaction_response(&ctx.http, |response| {
-                                        response
-                                            .kind(InteractionResponseType::ChannelMessageWithSource)
-                                            .interaction_response_data(|message| {
-                                                message.content(format!("`{ans}`"))
-                                            })
-                                    })
-                                    .await;
-                            }
+                        if let Some(ans) = end {
                             CONTAINER
                                 .lock()
                                 .unwrap()
                                 .channel_map
                                 .entry(command.channel_id)
                                 .and_modify(|quiz| *quiz = None);
+                            let _ = command
+                                .create_interaction_response(&ctx.http, |response| {
+                                    response
+                                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                                        .interaction_response_data(|message| {
+                                            message.content(format!("`{ans}`"))
+                                        })
+                                })
+                                .await;
                             return;
                         }
                         match command
