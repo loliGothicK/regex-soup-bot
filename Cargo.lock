@@ -891,6 +891,7 @@ dependencies = [
  "rand 0.8.4",
  "rand_distr",
  "regex",
+ "rustomaton",
  "serde",
  "serde_derive",
  "serde_json",
@@ -972,6 +973,11 @@ dependencies = [
  "sct",
  "webpki",
 ]
+
+[[package]]
+name = "rustomaton"
+version = "0.2.1"
+source = "git+https://github.com/kory33/rustomaton?rev=642647b#642647b1e33fc8a15d4ec8494ceb754d9955921b"
 
 [[package]]
 name = "ryu"
