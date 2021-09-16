@@ -43,6 +43,15 @@ pub struct NfaData<A: Alphabet> {
 }
 
 impl<A: Alphabet> NfaData<A> {
+    /// The NFA that accepts no word.
+    pub fn empty() -> NfaData<A> {
+        NfaData {
+            max_index: 0,
+            edges: vec![],
+            finals: vec![]
+        }
+    }
+
     /// The NFA that only accepts the empty word.
     pub fn epsilon() -> NfaData<A> {
         NfaData {
@@ -106,8 +115,8 @@ impl<A: Alphabet> NfaData<A> {
         // to the start state of another automaton using epsilon-transition.
         // See https://www.cs.odu.edu/~toida/nerzic/390teched/regular/fa/kleene-1.html for details.
 
-        let shifted_right = right.disconnect_with_shift(self.max_index);
-        let shifted_right_start_index = self.max_index;
+        let shifted_right_start_index = self.max_index + 1;
+        let shifted_right = right.disconnect_with_shift(shifted_right_start_index);
 
         let combined_transitions = self
             .edges
@@ -158,20 +167,19 @@ impl<A: Alphabet> NfaData<A> {
         // See https://www.cs.odu.edu/~toida/nerzic/390teched/regular/fa/kleene-1.html for the case
         // where `nfas.len() == 2`.
 
-        let result = Self::epsilon();
+        nfas.iter().fold(Self::empty(), |accum, nfa| {
+            let shifted_right_start_index = accum.max_index + 1;
+            let shifted_nfa = nfa.disconnect_with_shift(shifted_right_start_index);
 
-        nfas.iter().fold(Self::epsilon(), |_accum, nfa| {
-            let shifted_nfa = nfa.disconnect_with_shift(result.max_index);
-
-            let extended_edges = result
+            let extended_edges = accum
                 .edges
                 .iter()
                 .cloned()
                 .chain(shifted_nfa.edges.iter().cloned())
-                .chain(std::iter::once((0, None, result.max_index)))
+                .chain(std::iter::once((0, None, shifted_right_start_index)))
                 .collect();
 
-            let extended_finals = result
+            let extended_finals = accum
                 .finals
                 .iter()
                 .cloned()
@@ -190,7 +198,7 @@ impl<A: Alphabet> NfaData<A> {
     pub fn star(nfa: &NfaData<A>) -> NfaData<A> {
         // See https://www.cs.odu.edu/~toida/nerzic/390teched/regular/fa/kleene-1.html for details.
         let shifted = nfa.disconnect_with_shift(1);
-        let extended_edges = nfa
+        let extended_edges = shifted
             .edges
             .iter()
             .cloned()
