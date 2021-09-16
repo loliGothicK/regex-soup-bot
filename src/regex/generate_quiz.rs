@@ -141,7 +141,7 @@ impl Distribution<Vec<RegexAst>> for RegexTreeVec<'_> {
             .collect()
     }
 }
-impl <'a> From<BoundedRegexAstDistribution<'a>> for RegexTreeVec<'a> {
+impl<'a> From<BoundedRegexAstDistribution<'a>> for RegexTreeVec<'a> {
     fn from(d: BoundedRegexAstDistribution<'a>) -> RegexTreeVec<'a> {
         RegexTreeVec {
             alphabet_set: d.alphabet_set,
