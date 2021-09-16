@@ -381,24 +381,58 @@ impl RegexAst {
     //endregion
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum FmtPrecedence {
+    Alternation,
+    Concatenation,
+    Star,
+}
+
+/// Convert the AST to a string with minimal usage of parentheses,
+/// using the information about the operator precedence of the enclosing context.
+fn show_with_precedence(prec: FmtPrecedence, ast: &RegexAst) -> String {
+    match ast {
+        RegexAst::Epsilon => "ε".to_owned(),
+        RegexAst::Literal(a) => format!("{a}"),
+        RegexAst::Star(ast) => format!("{}*", show_with_precedence(FmtPrecedence::Star, ast)),
+        RegexAst::Concatenation(asts) => {
+            let show_parens = prec > FmtPrecedence::Concatenation;
+
+            let inner = asts
+                .iter()
+                .map(|ast| show_with_precedence(FmtPrecedence::Concatenation, ast))
+                .join("");
+
+            if show_parens {
+                format!("({inner})")
+            } else {
+                inner
+            }
+        }
+        RegexAst::Alternation(asts) => {
+            let show_parens = prec > FmtPrecedence::Alternation;
+
+            let inner = asts
+                .iter()
+                .map(|ast| show_with_precedence(FmtPrecedence::Concatenation, ast))
+                .join("|");
+
+            if show_parens {
+                format!("({inner})")
+            } else {
+                inner
+            }
+        }
+    }
+}
+
 impl Display for RegexAst {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        // TODO reduce extra parentheses; for example, write (a|b)* instead of ((a|b))*
-        match self {
-            RegexAst::Epsilon => write!(f, "ε"),
-            RegexAst::Literal(a) => a.fmt(f),
-            RegexAst::Star(ast) => write!(f, "({})*", ast),
-            RegexAst::Concatenation(asts) => write!(
-                f,
-                "({})",
-                asts.iter().map(|ast| format!("{}", ast)).join("")
-            ),
-            RegexAst::Alternation(asts) => write!(
-                f,
-                "({})",
-                asts.iter().map(|ast| format!("{}", ast)).join("|")
-            ),
-        }
+        write!(
+            f,
+            "{}",
+            show_with_precedence(FmtPrecedence::Alternation, self)
+        )
     }
 }
 
@@ -507,7 +541,7 @@ mod tests {
     #[test]
     fn fmt_regex_ast() {
         assert_eq!(
-            "(abε)",
+            "abε",
             format!(
                 "{}",
                 RegexAst::Concatenation(vec![
@@ -519,7 +553,7 @@ mod tests {
         );
 
         assert_eq!(
-            "(a|b|ε)",
+            "a|b|ε",
             format!(
                 "{}",
                 RegexAst::Alternation(vec![
@@ -531,7 +565,7 @@ mod tests {
         );
 
         assert_eq!(
-            "((a|g))*",
+            "(a|g)*",
             format!(
                 "{}",
                 RegexAst::Star(Box::new(RegexAst::Alternation(vec![
@@ -542,7 +576,7 @@ mod tests {
         );
 
         assert_eq!(
-            "((a|(bc)))*",
+            "(a|bc)*",
             format!(
                 "{}",
                 RegexAst::Star(Box::new(RegexAst::Alternation(vec![
@@ -556,7 +590,7 @@ mod tests {
         );
 
         assert_eq!(
-            "(((a|c)|(bc)))*",
+            "((a|c)|bc)*",
             format!(
                 "{}",
                 RegexAst::Star(Box::new(RegexAst::Alternation(vec![
