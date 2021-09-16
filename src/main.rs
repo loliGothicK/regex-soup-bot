@@ -22,7 +22,7 @@
 
 use anyhow::{anyhow, Context};
 use counted_array::counted_array;
-
+use indoc::indoc;
 use once_cell::sync::Lazy;
 use regexsoup::{
     bot::{Container, Msg, Quiz, Tsx},
@@ -60,6 +60,7 @@ counted_array!(
         "summary",
         "join",
         "give-up",
+        "help",
     ]
 );
 
@@ -562,6 +563,80 @@ impl EventHandler for Handler {
                         }
                     });
                 }
+                (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("help") => {
+                    let mut embed = CreateEmbed::default();
+                    embed.colour(Colour::DARK_GREEN).title("HELP");
+                    embed
+                        .field(
+                            "REGEX-SOUP 101",
+                            indoc! {
+                                "`/start` => `/join` => `/query` => (`/summary`) => `/guess`"
+                            },
+                            false,
+                        )
+                        .field(
+                            "/start [DIFFICULTY]",
+                            indoc! {
+                                "[DIFFICULTY]: number of alphabets"
+                            },
+                            false,
+                        )
+                        .field(
+                            "/query [INPUT]",
+                            indoc! {r#"
+                                [INPUT]: alphabets to test (`""` is accepted as empty string)
+                            "#},
+                            false,
+                        )
+                        .field(
+                            "/guess [INPUT]",
+                            indoc! {r#"
+                                Check your answer.
+                                [INPUT]: regex you guess
+                            "#},
+                            false,
+                        )
+                        .field(
+                            "/summary",
+                            indoc! {r#"
+                                Shows the history of querries.
+                            "#},
+                            false,
+                        )
+                        .field(
+                            "/join",
+                            indoc! {r#"
+                                You have to `/join` first to take part in the quiz!.
+                            "#},
+                            false,
+                        )
+                        .field(
+                            "/give-up",
+                            indoc! {r#"
+                                When all participants have `give-up`,
+                                the quiz will end and the answers will be revealed!.
+                            "#},
+                            false,
+                        );
+                    let tx = CENTRAL.sender();
+                    match command
+                        .create_interaction_response(&ctx.http, |response| {
+                            response
+                                .kind(InteractionResponseType::ChannelMessageWithSource)
+                                .interaction_response_data(|message| message.add_embed(embed))
+                        })
+                        .await
+                    {
+                        Ok(_) => {
+                            let _ = tx
+                                .send(Msg::Ok("successfully finished summary command.".to_owned()))
+                                .await;
+                        }
+                        Err(err) => {
+                            let _ = tx.send(Msg::Err(err.into())).await;
+                        }
+                    }
+                }
                 (_, unknown) => {
                     let _ = CENTRAL
                         .sender()
@@ -595,7 +670,7 @@ pub async fn bot_client() -> anyhow::Result<Client> {
 }
 
 pub async fn create_slash_commands(http: impl AsRef<Http>) -> anyhow::Result<()> {
-    // start [set] [level]: ゲームセッション開始コマンド
+    // start [DIFFICULTY]: ゲームセッション開始コマンド
     // query: マッチクエリ
     // guess: 回答試行
     // summary: 今までのクエリのサマリ表示
@@ -661,6 +736,11 @@ pub async fn create_slash_commands(http: impl AsRef<Http>) -> anyhow::Result<()>
 
     let _ = ApplicationCommand::create_global_application_command(&http, |a| {
         a.name("give-up").description("Register your despair.")
+    })
+    .await?;
+
+    let _ = ApplicationCommand::create_global_application_command(&http, |a| {
+        a.name("help").description("helpful")
     })
     .await?;
 
