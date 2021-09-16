@@ -478,26 +478,68 @@ impl EventHandler for Handler {
                     println!("cmd: give-up");
                     let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
-                        let msg = CONTAINER
+                        let (msg, is_empty) = CONTAINER
                             .lock()
                             .unwrap()
                             .channel_map
                             .get_mut(&command.channel_id)
                             .map_or_else(
-                                || "まずは`start`コマンドでゲームを開始してください".to_string(),
+                                || {
+                                    (
+                                        "まずは`start`コマンドでゲームを開始してください"
+                                            .to_string(),
+                                        false,
+                                    )
+                                },
                                 |quiz| {
                                     if let Some(quiz) = quiz {
                                         quiz.accepts_give_up(&command.user.id).map_or_else(
-                                            |_| "まだとうとくされていません".to_string(),
-                                            |_| format!("{} is added.", command.user.name.clone()),
+                                            |_| ("まだとうとくされていません".to_string(), false),
+                                            |_| {
+                                                (
+                                                    format!(
+                                                        "{} is removed.",
+                                                        command.user.name.clone()
+                                                    ),
+                                                    quiz.is_empty(),
+                                                )
+                                            },
                                         )
                                     } else {
-                                        "まずは`start`コマンドでゲームを開始してください"
-                                            .to_string()
+                                        (
+                                            "まずは`start`コマンドでゲームを開始してください"
+                                                .to_string(),
+                                            false,
+                                        )
                                     }
                                 },
                             );
-
+                        if is_empty {
+                            let ans = CONTAINER
+                                .lock()
+                                .unwrap()
+                                .channel_map
+                                .get(&command.channel_id)
+                                .map(|x| x.as_ref().map(|quiz| quiz.get_answer_regex()));
+                            if let Some(Some(ans)) = ans {
+                                let _ = command
+                                    .create_interaction_response(&ctx.http, |response| {
+                                        response
+                                            .kind(InteractionResponseType::ChannelMessageWithSource)
+                                            .interaction_response_data(|message| {
+                                                message.content(format!("`{ans}`"))
+                                            })
+                                    })
+                                    .await;
+                            }
+                            CONTAINER
+                                .lock()
+                                .unwrap()
+                                .channel_map
+                                .entry(command.channel_id)
+                                .and_modify(|quiz| *quiz = None);
+                            return;
+                        }
                         match command
                             .create_interaction_response(&ctx.http, |response| {
                                 response
