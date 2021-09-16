@@ -25,8 +25,9 @@ use std::{
     fmt::{Display, Formatter},
     vec::Vec,
 };
+use strum_macros::EnumIter;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(EnumIter, Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Alphabet {
     A,
     B,
