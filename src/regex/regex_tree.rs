@@ -17,18 +17,16 @@
  *
  */
 
-use super::super::nfa::nfa_manipulations::NfaData;
 use anyhow::anyhow;
 use combine::{choice, parser, unexpected_any, value, ParseError, Parser, Stream};
 use itertools::Itertools;
 use parser::char::{char, letter};
+use rustomaton::{automaton::Buildable, nfa::NFA};
 use std::{
     collections::HashSet,
     fmt::{Display, Formatter},
     vec::Vec,
 };
-use rustomaton::nfa::NFA;
-use rustomaton::automaton::Buildable;
 
 #[derive(Copy, Clone, Debug, PartialEq, Hash, Eq, PartialOrd, Ord)]
 pub enum Alphabet {
@@ -206,39 +204,21 @@ impl RegexAst {
         compiled.is_match(&input_str)
     }
 
-    fn compile_to_nfa_data(&self) -> NfaData<Alphabet> {
-        match self {
-            RegexAst::Epsilon => NfaData::epsilon(),
-            RegexAst::Literal(a) => NfaData::literal(*a),
-            RegexAst::Star(ast) => NfaData::star(&ast.compile_to_nfa_data()),
-            RegexAst::Concatenation(asts) => {
-                let compiled_asts = asts.iter().map(|ast| ast.compile_to_nfa_data()).collect();
-                NfaData::concat_all(compiled_asts)
-            }
-            RegexAst::Alternation(asts) => {
-                let compiled_asts = asts.iter().map(|ast| ast.compile_to_nfa_data()).collect();
-                NfaData::union_all(compiled_asts)
-            }
-        }
-    }
-
     fn compile_to_nfa(&self, alphabets: HashSet<Alphabet>) -> NFA<Alphabet> {
         match self {
             RegexAst::Epsilon => NFA::new_length(alphabets, 0),
-            RegexAst::Literal(a) => NFA::new_matching(alphabets, &vec![*a]),
+            RegexAst::Literal(a) => NFA::new_matching(alphabets, &[*a]),
             RegexAst::Star(ast) => ast.compile_to_nfa(alphabets).kleene(),
-            RegexAst::Concatenation(asts) => {
-                asts.iter()
-                    .map(|ast| ast.compile_to_nfa(alphabets.clone()))
-                    .fold1(|nfa1, nfa2| nfa1.concatenate(nfa2))
-                    .unwrap()
-            }
-            RegexAst::Alternation(asts) => {
-                asts.iter()
-                    .map(|ast| ast.compile_to_nfa(alphabets.clone()))
-                    .fold1(|nfa1, nfa2| nfa1.unite(nfa2))
-                    .unwrap()
-            }
+            RegexAst::Concatenation(asts) => asts
+                .iter()
+                .map(|ast| ast.compile_to_nfa(alphabets.clone()))
+                .fold1(|nfa1, nfa2| nfa1.concatenate(nfa2))
+                .unwrap(),
+            RegexAst::Alternation(asts) => asts
+                .iter()
+                .map(|ast| ast.compile_to_nfa(alphabets.clone()))
+                .fold1(|nfa1, nfa2| nfa1.unite(nfa2))
+                .unwrap(),
         }
     }
 

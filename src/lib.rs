@@ -29,7 +29,6 @@
 #![feature(format_args_capture)]
 
 pub mod concepts;
-mod nfa;
 pub mod notification;
 pub mod parser;
 pub mod regex;
