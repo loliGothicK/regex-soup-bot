@@ -57,7 +57,6 @@ fn word_distribution(alphabets: &AlphabetSet) -> impl Distribution<Vec<Alphabet>
     WordDistribution(length_distribution, alphabet_distribution(alphabets))
 }
 
-#[allow(dead_code)]
 fn estimate_acceptance_probability(alphabets: &AlphabetSet, regex_ast: &RegexAst) -> f64 {
     let compiled_ast = regex_ast.compile_to_string_regex();
 
@@ -231,13 +230,16 @@ pub fn randomly_generate(diff: &Difficulty) -> RegexAst {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::regex::{randomly_generate, Difficulty};
+#[test]
+fn randomly_generate_returns() {
     use std::convert::TryInto;
 
-    #[test]
-    fn randomly_generate_returns() {
+    let diff = Difficulty(3u8.try_into().unwrap());
+
+    let alphabets = alphabets_used_with(&diff);
+    let asts = std::iter::repeat_with(|| randomly_generate(&diff)).take(3);
+
+    for ast in asts {
         println!(
             "Generated AST\n\t{:?}\nwith estimated acceptance rate of {}",
             ast,
