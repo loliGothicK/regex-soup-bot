@@ -22,6 +22,7 @@ regex = "1.5.4"
 combine = "4.6.1"
 strum = "0.21.0"
 strum_macros = "0.21.1"
+rand_distr = "0.4.1"
 rand = "0.8.4"
 
 [dependencies.serenity]
