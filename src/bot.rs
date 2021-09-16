@@ -121,16 +121,20 @@ pub struct Container {
 
 impl Quiz {
     pub fn new() -> Self {
+        let regex = randomly_generate(&Difficulty(3u8.try_into().unwrap()));
+        println!("{}", regex);
         Self {
-            regex: randomly_generate(&Difficulty(3u8.try_into().unwrap())),
+            regex,
             history: indexmap! {},
             participants: indexset! {},
         }
     }
 
     pub fn new_with_difficulty(difficulty: NonZeroU8) -> Self {
+        let regex = randomly_generate(&Difficulty(difficulty));
+        println!("{}", regex);
         Self {
-            regex: randomly_generate(&Difficulty(difficulty)),
+            regex,
             history: indexmap! {},
             participants: indexset! {},
         }
