@@ -109,16 +109,17 @@ impl<A: Alphabet> NfaData<A> {
         let shifted_right = right.disconnect_with_shift(self.max_index);
         let shifted_right_start_index = self.max_index;
 
-        let combined_transitions = {
-            let mut edges = self.edges.clone();
-            edges.extend(shifted_right.edges);
-            edges.extend(
+        let combined_transitions = self
+            .edges
+            .iter()
+            .cloned()
+            .chain(shifted_right.edges.iter().cloned())
+            .chain(
                 self.finals
                     .iter()
                     .map(|self_final| (*self_final, None, shifted_right_start_index)),
-            );
-            edges
-        };
+            )
+            .collect();
 
         NfaData {
             max_index: shifted_right.max_index,
@@ -162,18 +163,20 @@ impl<A: Alphabet> NfaData<A> {
         nfas.iter().fold(Self::epsilon(), |_accum, nfa| {
             let shifted_nfa = nfa.disconnect_with_shift(result.max_index);
 
-            let extended_edges = {
-                let mut edges = result.edges.clone();
-                edges.extend(shifted_nfa.edges);
-                edges.push((0, None, result.max_index));
-                edges
-            };
+            let extended_edges = result
+                .edges
+                .iter()
+                .cloned()
+                .chain(shifted_nfa.edges.iter().cloned())
+                .chain(std::iter::once((0, None, result.max_index)))
+                .collect();
 
-            let extended_finals = {
-                let mut finals = result.finals.clone();
-                finals.extend(shifted_nfa.finals);
-                finals
-            };
+            let extended_finals = result
+                .finals
+                .iter()
+                .cloned()
+                .chain(shifted_nfa.finals.iter().cloned())
+                .collect();
 
             NfaData {
                 max_index: shifted_nfa.max_index,
@@ -187,12 +190,13 @@ impl<A: Alphabet> NfaData<A> {
     pub fn star(nfa: &NfaData<A>) -> NfaData<A> {
         // See https://www.cs.odu.edu/~toida/nerzic/390teched/regular/fa/kleene-1.html for details.
         let shifted = nfa.disconnect_with_shift(1);
-        let extended_edges = {
-            let mut edges = nfa.edges.clone();
-            edges.push((0, None, 1));
-            edges.extend(shifted.finals.iter().map(|idx| (*idx, None, 0)));
-            edges
-        };
+        let extended_edges = nfa
+            .edges
+            .iter()
+            .cloned()
+            .chain(std::iter::once((0, None, 1)))
+            .chain(shifted.finals.iter().map(|idx| (*idx, None, 0)))
+            .collect();
 
         NfaData {
             max_index: shifted.max_index,
