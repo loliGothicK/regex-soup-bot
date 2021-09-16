@@ -277,9 +277,8 @@ impl RegexAst {
         // The decider function will essentially create a DFA that recognizes the intersection of
         // `L(dfa_1)` and `Complement(L(dfa_2))`.
         // Therefore, emptiness test done by `pair_empty` will check that
-        // "there is some word recognized by either dfa_1 or dfa_2 but not by the other".
-        // So by negating this result we are done.
-        !dfa_1.pair_empty(&dfa_2, &|final_in_1, final_in_2| final_in_1 && !final_in_2)
+        // "there is no word such that either dfa_1 or dfa_2 recognizes but the other does not".
+        dfa_1.pair_empty(&dfa_2, &|final_in_1, final_in_2| final_in_1 && !final_in_2)
     }
 }
 
