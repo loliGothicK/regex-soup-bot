@@ -25,8 +25,9 @@ use counted_array::counted_array;
 
 use once_cell::sync::Lazy;
 use regexsoup::{
-    bot::{Container, Msg, Tsx},
+    bot::{Container, Msg, Quiz, Tsx},
     notification::{Notification, SlashCommand, To},
+    regex::{Alphabet, RegexAst},
 };
 use serenity::{
     async_trait,
@@ -44,7 +45,9 @@ use serenity::{
 };
 use std::{
     collections::HashMap,
+    convert::TryInto,
     fmt::Debug,
+    num::NonZeroU8,
     sync::{Arc, Mutex},
 };
 use tokio::sync::mpsc::channel;
@@ -60,10 +63,9 @@ counted_array!(
     ]
 );
 
-#[allow(dead_code)]
-pub static CONTAINER: Lazy<Arc<Container>> = Lazy::new(|| {
+pub static CONTAINER: Lazy<Arc<Mutex<Container>>> = Lazy::new(|| {
     let container = Container::default();
-    Arc::new(container)
+    Arc::new(Mutex::new(container))
 });
 
 /// Handler for the BOT
@@ -102,7 +104,24 @@ impl EventHandler for Handler {
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("start") => {
                     let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
-                        let msg = "新しいREGガメのスープを開始しました".to_string();
+                        let difficulty: NonZeroU8 = (dictionary
+                            .get("size")
+                            .map_or_else(|| Ok(3i64), |size| size.to::<i64>())
+                            .unwrap() as u8)
+                            .try_into()
+                            .unwrap();
+
+                        CONTAINER
+                            .lock()
+                            .unwrap()
+                            .channel_map
+                            .entry(command.channel_id)
+                            .and_modify(|quiz| {
+                                *quiz = Some(Quiz::new_with_difficulty(difficulty));
+                            })
+                            .or_insert_with(|| Some(Quiz::new_with_difficulty(difficulty)));
+
+                        let msg = "新しいREGガメのスープを開始します".to_string();
                         match command
                             .create_interaction_response(&ctx.http, |response| {
                                 response
@@ -128,29 +147,80 @@ impl EventHandler for Handler {
                     println!("cmd: query");
                     let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
-                        let input = dictionary
-                            .get(&"input".to_string())
-                            .unwrap()
-                            .to::<String>()
-                            .unwrap();
-                        let msg = format!("{input} => No");
-                        match command
-                            .create_interaction_response(&ctx.http, |response| {
-                                response
-                                    .kind(InteractionResponseType::ChannelMessageWithSource)
-                                    .interaction_response_data(|message| message.content(&msg))
-                            })
-                            .await
-                        {
-                            Ok(_) => {
-                                let _ = tx
-                                    .send(Msg::Ok(
-                                        "successfully finished query command.".to_owned(),
-                                    ))
-                                    .await;
+                        let original_input =
+                            dictionary.get("input").unwrap().to::<String>().unwrap();
+                        let input = Alphabet::vec_from_str(&original_input);
+                        match input {
+                            Ok(valid_input) => {
+                                let msg = CONTAINER
+                                    .lock()
+                                    .unwrap()
+                                    .channel_map
+                                    .get_mut(&command.channel_id)
+                                    .map_or_else(
+                                        || "ゲームが開始していません".to_string(),
+                                        |quiz| {
+                                            if let Some(quiz) = quiz {
+                                                let is_match = quiz.query(&valid_input);
+                                                format!(
+                                                    "{original_input} => {}",
+                                                    if is_match { "Yes" } else { "No" }
+                                                )
+                                            } else {
+                                                "ゲームが開始していません".to_string()
+                                            }
+                                        },
+                                    );
+                                match command
+                                    .create_interaction_response(&ctx.http, |response| {
+                                        response
+                                            .kind(InteractionResponseType::ChannelMessageWithSource)
+                                            .interaction_response_data(|message| {
+                                                message.content(&msg)
+                                            })
+                                    })
+                                    .await
+                                {
+                                    Ok(_) => {
+                                        let _ = tx
+                                            .send(Msg::Ok(
+                                                "successfully finished query command.".to_owned(),
+                                            ))
+                                            .await;
+                                    }
+                                    Err(err) => {
+                                        let _ = tx.send(Msg::Err(err.into())).await;
+                                    }
+                                }
                             }
-                            Err(err) => {
-                                let _ = tx.send(Msg::Err(err.into())).await;
+                            Err(why) => {
+                                let mut embed = CreateEmbed::default();
+                                embed.colour(Colour::RED).title("ERROR").field(
+                                    "reason: ",
+                                    format!("{why}"),
+                                    false,
+                                );
+                                match command
+                                    .create_interaction_response(&ctx.http, |response| {
+                                        response
+                                            .kind(InteractionResponseType::ChannelMessageWithSource)
+                                            .interaction_response_data(|message| {
+                                                message.add_embed(embed)
+                                            })
+                                    })
+                                    .await
+                                {
+                                    Ok(_) => {
+                                        let _ = tx
+                                            .send(Msg::Ok(
+                                                "successfully finished error message.".to_owned(),
+                                            ))
+                                            .await;
+                                    }
+                                    Err(err) => {
+                                        let _ = tx.send(Msg::Err(err.into())).await;
+                                    }
+                                }
                             }
                         }
                     });
@@ -159,29 +229,91 @@ impl EventHandler for Handler {
                     println!("cmd: guess");
                     let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
-                        let regex = dictionary
-                            .get(&"regex".to_string())
-                            .unwrap()
-                            .to::<String>()
-                            .unwrap();
-                        let msg = format!("{regex} => No");
-                        match command
-                            .create_interaction_response(&ctx.http, |response| {
-                                response
-                                    .kind(InteractionResponseType::ChannelMessageWithSource)
-                                    .interaction_response_data(|message| message.content(&msg))
-                            })
-                            .await
-                        {
-                            Ok(_) => {
-                                let _ = tx
-                                    .send(Msg::Ok(
-                                        "successfully finished guess command.".to_owned(),
-                                    ))
-                                    .await;
+                        let original_input =
+                            dictionary.get("regex").unwrap().to::<String>().unwrap();
+                        let input = RegexAst::parse_str(&original_input);
+                        match input {
+                            Ok(valid_input) => {
+                                let (msg, is_accepted) = CONTAINER
+                                    .lock()
+                                    .unwrap()
+                                    .channel_map
+                                    .get_mut(&command.channel_id)
+                                    .map_or_else(
+                                        || ("ゲームが開始していません".to_string(), false),
+                                        |quiz| {
+                                            if let Some(quiz) = quiz {
+                                                let is_match = quiz.guess(&valid_input);
+                                                (
+                                                    format!(
+                                                        "{original_input} => {}",
+                                                        if is_match { "AC" } else { "WA" }
+                                                    ),
+                                                    is_match,
+                                                )
+                                            } else {
+                                                ("ゲームが開始していません".to_string(), false)
+                                            }
+                                        },
+                                    );
+                                if is_accepted {
+                                    CONTAINER
+                                        .lock()
+                                        .unwrap()
+                                        .channel_map
+                                        .entry(command.channel_id)
+                                        .and_modify(|quiz| *quiz = None);
+                                }
+                                match command
+                                    .create_interaction_response(&ctx.http, |response| {
+                                        response
+                                            .kind(InteractionResponseType::ChannelMessageWithSource)
+                                            .interaction_response_data(|message| {
+                                                message.content(&msg)
+                                            })
+                                    })
+                                    .await
+                                {
+                                    Ok(_) => {
+                                        let _ = tx
+                                            .send(Msg::Ok(
+                                                "successfully finished guess command.".to_owned(),
+                                            ))
+                                            .await;
+                                    }
+                                    Err(err) => {
+                                        let _ = tx.send(Msg::Err(err.into())).await;
+                                    }
+                                }
                             }
-                            Err(err) => {
-                                let _ = tx.send(Msg::Err(err.into())).await;
+                            Err(why) => {
+                                let mut embed = CreateEmbed::default();
+                                embed.colour(Colour::RED).title("ERROR").field(
+                                    "reason: ",
+                                    format!("{why}"),
+                                    false,
+                                );
+                                match command
+                                    .create_interaction_response(&ctx.http, |response| {
+                                        response
+                                            .kind(InteractionResponseType::ChannelMessageWithSource)
+                                            .interaction_response_data(|message| {
+                                                message.add_embed(embed)
+                                            })
+                                    })
+                                    .await
+                                {
+                                    Ok(_) => {
+                                        let _ = tx
+                                            .send(Msg::Ok(
+                                                "successfully finished error message.".to_owned(),
+                                            ))
+                                            .await;
+                                    }
+                                    Err(err) => {
+                                        let _ = tx.send(Msg::Err(err.into())).await;
+                                    }
+                                }
                             }
                         }
                     });
@@ -192,13 +324,23 @@ impl EventHandler for Handler {
                     println!("cmd: summary");
                     let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
-                        let mut embed = CreateEmbed::default();
-                        embed
-                            .colour(Colour::DARK_BLUE)
-                            .title("query history")
-                            .field("dummy", "yes", false)
-                            .field("dummy", "yes", false)
-                            .field("dummy", "no", false);
+                        let embed = CONTAINER
+                            .lock()
+                            .unwrap()
+                            .channel_map
+                            .get(&command.channel_id)
+                            .unwrap()
+                            .as_ref()
+                            .map(|quiz| quiz.get_query_history())
+                            .unwrap_or_else(|| {
+                                let mut embed = CreateEmbed::default();
+                                embed.colour(Colour::DARK_RED).title("ERROR").field(
+                                    "reason: ",
+                                    "ゲームが開始してません",
+                                    false,
+                                );
+                                embed
+                            });
                         match command
                             .create_interaction_response(&ctx.http, |response| {
                                 response
@@ -224,8 +366,26 @@ impl EventHandler for Handler {
                     println!("cmd: join");
                     let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
-                        let user_name = command.user.name.clone();
-                        let msg = format!("{user_name} is added.");
+                        let msg = CONTAINER
+                            .lock()
+                            .unwrap()
+                            .channel_map
+                            .get_mut(&command.channel_id)
+                            .map_or_else(
+                                || "まずは`start`コマンドでゲームを開始してください".to_string(),
+                                |quiz| {
+                                    if let Some(quiz) = quiz {
+                                        quiz.register(command.user.id).map_or_else(
+                                            |_| "すでにとうとくされています".to_string(),
+                                            |_| format!("{} is added.", command.user.name.clone()),
+                                        )
+                                    } else {
+                                        "まずは`start`コマンドでゲームを開始してください"
+                                            .to_string()
+                                    }
+                                },
+                            );
+
                         match command
                             .create_interaction_response(&ctx.http, |response| {
                                 response
@@ -235,7 +395,12 @@ impl EventHandler for Handler {
                             .await
                         {
                             Ok(_) => {
-                                let _ = tx.send(Msg::Ok(format!("{user_name} is added."))).await;
+                                let _ = tx
+                                    .send(Msg::Ok(format!(
+                                        "{} is added.",
+                                        command.user.name.clone()
+                                    )))
+                                    .await;
                             }
                             Err(err) => {
                                 let _ = tx.send(Msg::Err(err.into())).await;
@@ -249,8 +414,26 @@ impl EventHandler for Handler {
                     println!("cmd: give-up");
                     let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
-                        let user_name = command.user.name.clone();
-                        let msg = format!("{user_name} is removed.");
+                        let msg = CONTAINER
+                            .lock()
+                            .unwrap()
+                            .channel_map
+                            .get_mut(&command.channel_id)
+                            .map_or_else(
+                                || "まずは`start`コマンドでゲームを開始してください".to_string(),
+                                |quiz| {
+                                    if let Some(quiz) = quiz {
+                                        quiz.accepts_give_up(&command.user.id).map_or_else(
+                                            |_| "まだとうとくされていません".to_string(),
+                                            |_| format!("{} is added.", command.user.name.clone()),
+                                        )
+                                    } else {
+                                        "まずは`start`コマンドでゲームを開始してください"
+                                            .to_string()
+                                    }
+                                },
+                            );
+
                         match command
                             .create_interaction_response(&ctx.http, |response| {
                                 response
@@ -260,7 +443,12 @@ impl EventHandler for Handler {
                             .await
                         {
                             Ok(_) => {
-                                let _ = tx.send(Msg::Ok(format!("{user_name} is removed."))).await;
+                                let _ = tx
+                                    .send(Msg::Ok(format!(
+                                        "{} is removed.",
+                                        command.user.name.clone()
+                                    )))
+                                    .await;
                             }
                             Err(err) => {
                                 let _ = tx.send(Msg::Err(err.into())).await;
@@ -312,7 +500,7 @@ pub async fn create_slash_commands(http: impl AsRef<Http>) -> anyhow::Result<()>
         a.name("start")
             .description("Starting new regex-soup")
             .create_option(|o| {
-                o.name("set")
+                o.name("size")
                     .description("Please choice number of characters in the domain-set.")
                     .kind(ApplicationCommandOptionType::Integer)
                     .add_int_choice(1, 1)
