@@ -18,8 +18,9 @@
  */
 
 use super::RegexAst;
+use std::num::NonZeroU8;
 
-pub struct Difficulty(pub u8);
+pub struct Difficulty(pub NonZeroU8);
 
 pub fn randomly_generate(_diff: &Difficulty) -> RegexAst {
     todo!()

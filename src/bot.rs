@@ -122,7 +122,7 @@ pub enum QueryResult {
 impl Quiz {
     pub fn new() -> Self {
         Self {
-            regex: regex::randomly_generate(&regex::Difficulty(3u8)),
+            regex: regex::randomly_generate(&regex::Difficulty(3u8.into())),
             history: indexset! {},
             participants: indexset! {},
         }
