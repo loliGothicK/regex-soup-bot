@@ -32,7 +32,7 @@ pub struct AlphabetSet(pub Vec<Alphabet>);
 // constants related to generation of quizzes
 const MAX_QUIZ_TREE_SIZE: u8 = 12;
 const MINIMUM_ALLOWED_ACCEPTANCE_RATE: f64 = 0.2;
-const MAXIMUM_ALLOWED_ACCEPTANCE_RATE: f64 = 1.0 - MINIMUM_ALLOWED_ACCEPTANCE_RATE;
+const MAXIMUM_ALLOWED_ACCEPTANCE_RATE: f64 = 0.8;
 
 struct WordDistribution<L, A>(L, A);
 impl<'a, L: Distribution<usize>, A: Distribution<&'a Alphabet>> Distribution<Vec<Alphabet>>
