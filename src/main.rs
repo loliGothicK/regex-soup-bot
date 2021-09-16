@@ -147,6 +147,36 @@ impl EventHandler for Handler {
                     println!("cmd: query");
                     let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
+                        let is_joined = CONTAINER
+                            .lock()
+                            .unwrap()
+                            .channel_map
+                            .get_mut(&command.channel_id)
+                            .map_or_else(
+                                || false,
+                                |quiz| {
+                                    quiz.as_ref().map_or_else(
+                                        || false,
+                                        |quiz| quiz.is_participant(&command.user.id),
+                                    )
+                                },
+                            );
+
+                        if !is_joined {
+                            let _ = command
+                                .create_interaction_response(&ctx.http, |response| {
+                                    response
+                                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                                        .interaction_response_data(|message| {
+                                            message.content(
+                                                "まずは`join`コマンドで参加を登録してください",
+                                            )
+                                        })
+                                })
+                                .await;
+                            return;
+                        }
+
                         let original_input =
                             dictionary.get("input").unwrap().to::<String>().unwrap();
                         let input = Alphabet::vec_from_str(&original_input);
@@ -229,6 +259,36 @@ impl EventHandler for Handler {
                     println!("cmd: guess");
                     let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
+                        let is_joined = CONTAINER
+                            .lock()
+                            .unwrap()
+                            .channel_map
+                            .get_mut(&command.channel_id)
+                            .map_or_else(
+                                || false,
+                                |quiz| {
+                                    quiz.as_ref().map_or_else(
+                                        || false,
+                                        |quiz| quiz.is_participant(&command.user.id),
+                                    )
+                                },
+                            );
+
+                        if !is_joined {
+                            let _ = command
+                                .create_interaction_response(&ctx.http, |response| {
+                                    response
+                                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                                        .interaction_response_data(|message| {
+                                            message.content(
+                                                "まずは`join`コマンドで参加を登録してください",
+                                            )
+                                        })
+                                })
+                                .await;
+                            return;
+                        }
+
                         let original_input =
                             dictionary.get("regex").unwrap().to::<String>().unwrap();
                         let input = RegexAst::parse_str(&original_input);
