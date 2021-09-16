@@ -17,7 +17,7 @@
  *
  */
 
-use super::super::nfa::nfa_manipulations;
+use super::super::nfa::nfa_manipulations::NfaData;
 use anyhow::anyhow;
 use automata::nfa::Nfa;
 use combine::{choice, parser, unexpected_any, value, ParseError, Parser, Stream};
@@ -205,24 +205,24 @@ impl RegexAst {
         compiled.is_match(&input_str)
     }
 
-    fn compile_to_nfa(&self) -> Nfa<Alphabet> {
+    fn compile_to_nfa_data(&self) -> NfaData<Alphabet> {
         match self {
-            RegexAst::Epsilon => nfa_manipulations::epsilon(),
-            RegexAst::Literal(a) => nfa_manipulations::literal(*a),
-            RegexAst::Star(ast) => nfa_manipulations::star(&ast.compile_to_nfa()),
+            RegexAst::Epsilon => NfaData::epsilon(),
+            RegexAst::Literal(a) => NfaData::literal(*a),
+            RegexAst::Star(ast) => NfaData::star(&ast.compile_to_nfa_data()),
             RegexAst::Concatenation(asts) => {
                 let compiled_asts = asts
                     .iter()
-                    .map(|ast| ast.compile_to_nfa())
+                    .map(|ast| ast.compile_to_nfa_data())
                     .collect::<Vec<_>>();
-                nfa_manipulations::concat_all(compiled_asts)
+                NfaData::concat_all(compiled_asts)
             }
             RegexAst::Alternation(asts) => {
                 let compiled_asts = asts
                     .iter()
-                    .map(|ast| ast.compile_to_nfa())
+                    .map(|ast| ast.compile_to_nfa_data())
                     .collect::<Vec<_>>();
-                nfa_manipulations::union_all(compiled_asts)
+                NfaData::union_all(compiled_asts)
             }
         }
     }
@@ -249,8 +249,8 @@ impl RegexAst {
     }
 
     pub fn equivalent_to(&self, another: &RegexAst) -> bool {
-        let nfa_1 = self.compile_to_nfa();
-        let nfa_2 = another.compile_to_nfa();
+        let nfa_1: Nfa<Alphabet> = self.compile_to_nfa_data().into();
+        let nfa_2: Nfa<Alphabet> = another.compile_to_nfa_data().into();
 
         let alphabet_extension = self.used_alphabets();
 
