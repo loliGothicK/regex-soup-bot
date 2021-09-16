@@ -175,6 +175,18 @@ impl Quiz {
         }
         embed
     }
+
+    pub fn is_participant(&self, id: &UserId) -> bool {
+        self.participants.contains(id)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.participants.is_empty()
+    }
+
+    pub fn get_answer_regex(&self) -> RegexAst {
+        self.regex.clone()
+    }
 }
 
 impl Default for Quiz {
