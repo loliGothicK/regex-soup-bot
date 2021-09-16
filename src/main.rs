@@ -303,14 +303,20 @@ impl EventHandler for Handler {
                                         || ("ゲームが開始していません".to_string(), false),
                                         |quiz| {
                                             if let Some(quiz) = quiz {
-                                                let is_match = quiz.guess(&valid_input);
-                                                (
-                                                    format!(
-                                                        "`{original_input}` => {}",
-                                                        if is_match { "AC" } else { "WA" }
-                                                    ),
-                                                    is_match,
-                                                )
+                                                if quiz.guess(&valid_input) {
+                                                    (format!(
+                                                        indoc!{"
+                                                            - `{}` => AC
+                                                            - original answer is `{}`
+                                                            - {} queries
+                                                        "},
+                                                        original_input,
+                                                        quiz.get_answer_regex(),
+                                                        quiz.len(),
+                                                    ), true)
+                                                } else {
+                                                    (format!("`{original_input}` => WA"), false)
+                                                }
                                             } else {
                                                 ("ゲームが開始していません".to_string(), false)
                                             }

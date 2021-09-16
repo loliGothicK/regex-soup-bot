@@ -186,6 +186,10 @@ impl Quiz {
         self.participants.is_empty()
     }
 
+    pub fn len(&self) -> usize {
+        self.participants.len()
+    }
+
     pub fn get_answer_regex(&self) -> RegexAst {
         self.regex.clone()
     }
