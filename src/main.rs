@@ -179,7 +179,11 @@ impl EventHandler for Handler {
 
                         let original_input =
                             dictionary.get("input").unwrap().to::<String>().unwrap();
-                        let input = Alphabet::vec_from_str(&original_input);
+                        let input = if original_input == r#""""# {
+                            Ok(vec![])
+                        } else {
+                            Alphabet::vec_from_str(&original_input)
+                        };
                         match input {
                             Ok(valid_input) => {
                                 let msg = CONTAINER

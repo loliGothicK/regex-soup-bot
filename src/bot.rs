@@ -144,7 +144,12 @@ impl Quiz {
         let is_match = self.regex.matches(input);
         let input_string = input.iter().map(|x| format!("{x}")).join("");
         self.history
-            .entry(input_string)
+            .entry(
+                input_string
+                    .is_empty()
+                    .then(|| input_string)
+                    .unwrap_or_else(|| r#""""#.to_string()),
+            )
             .or_insert((if is_match { "Yes" } else { "No" }).to_string());
         is_match
     }
