@@ -626,7 +626,7 @@ pub async fn create_slash_commands(http: impl AsRef<Http>) -> anyhow::Result<()>
 
     let _ = ApplicationCommand::create_global_application_command(&http, |a| {
         a.name("query")
-            .description("Starting new regex-soup")
+            .description("Query whether is matched with regular expression.")
             .create_option(|o| {
                 o.name("input")
                     .description("Please enter the input you wish to test for a match.")
@@ -638,7 +638,7 @@ pub async fn create_slash_commands(http: impl AsRef<Http>) -> anyhow::Result<()>
 
     let _ = ApplicationCommand::create_global_application_command(&http, |a| {
         a.name("guess")
-            .description("Starting new regex-soup")
+            .description("Check your answer.")
             .create_option(|o| {
                 o.name("regex")
                     .description("Please enter the regex you guess.")
