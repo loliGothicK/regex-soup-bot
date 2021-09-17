@@ -191,7 +191,7 @@ impl Quiz {
     }
 
     pub fn len(&self) -> usize {
-        self.participants.len()
+        self.history.len()
     }
 
     pub fn get_answer_regex(&self) -> RegexAst {
