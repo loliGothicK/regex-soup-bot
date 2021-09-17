@@ -18,7 +18,7 @@
  */
 
 #![feature(format_args_capture)]
-#![feature(async_closure)]
+#![feature(never_type)]
 
 use anyhow::{anyhow, Context};
 use counted_array::counted_array;
@@ -26,6 +26,7 @@ use indoc::indoc;
 use once_cell::sync::Lazy;
 use regexsoup::{
     bot::{Container, Msg, Quiz, Tsx},
+    concepts::SameAs,
     notification::{Notification, SlashCommand, To},
     regex::{Alphabet, RegexAst},
 };
@@ -46,7 +47,7 @@ use serenity::{
 use std::{
     collections::HashMap,
     convert::TryInto,
-    fmt::Debug,
+    fmt::{Debug, Display},
     num::NonZeroU8,
     sync::{Arc, Mutex},
 };
@@ -68,6 +69,64 @@ pub static CONTAINER: Lazy<Arc<Mutex<Container>>> = Lazy::new(|| {
     let container = Container::default();
     Arc::new(Mutex::new(container))
 });
+
+#[async_trait]
+pub trait Logger<T: Debug> {
+    async fn logging(self) -> anyhow::Result<(), !>
+    where
+        Self: SameAs<anyhow::Result<T>>;
+
+    async fn logging_with<F: Send + Sync + 'static, Log: Display>(
+        self,
+        f: F,
+    ) -> anyhow::Result<(), !>
+    where
+        Self: SameAs<anyhow::Result<T>>,
+        F: FnOnce(T) -> Log;
+}
+
+#[async_trait]
+impl<T: Debug + Send + Sync + 'static> Logger<T> for anyhow::Result<T> {
+    async fn logging(self) -> anyhow::Result<(), !>
+    where
+        Self: SameAs<anyhow::Result<T>>,
+    {
+        let tx = CENTRAL.sender();
+        tokio::task::spawn(async move {
+            match self {
+                Ok(msg) => {
+                    let _ = tx.send(Msg::Ok(format!("{msg:?}"))).await;
+                }
+                Err(err) => {
+                    let _ = tx.send(Msg::Err(err)).await;
+                }
+            }
+        });
+        Ok(())
+    }
+
+    async fn logging_with<F: Send + Sync + 'static, Log: Display>(
+        self,
+        f: F,
+    ) -> anyhow::Result<(), !>
+    where
+        Self: SameAs<anyhow::Result<T>>,
+        F: FnOnce(T) -> Log,
+    {
+        let tx = CENTRAL.sender();
+        tokio::task::spawn(async move {
+            match self {
+                Ok(value) => {
+                    let _ = tx.send(Msg::Ok(format!("{}", f(value)))).await;
+                }
+                Err(err) => {
+                    let _ = tx.send(Msg::Err(err)).await;
+                }
+            }
+        });
+        Ok(())
+    }
+}
 
 /// Handler for the BOT
 #[derive(Debug)]
@@ -103,7 +162,6 @@ impl EventHandler for Handler {
 
             match head {
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("start") => {
-                    let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
                         let difficulty: NonZeroU8 = (dictionary
                             .get("size")
@@ -118,30 +176,20 @@ impl EventHandler for Handler {
                         );
 
                         let msg = "新しいREGガメのスープを開始します".to_string();
-                        match command
+                        let _ = command
                             .create_interaction_response(&ctx.http, |response| {
                                 response
                                     .kind(InteractionResponseType::ChannelMessageWithSource)
                                     .interaction_response_data(|message| message.content(&msg))
                             })
                             .await
-                        {
-                            Ok(_) => {
-                                let _ = tx
-                                    .send(Msg::Ok(
-                                        "successfully started new regex-soup.".to_owned(),
-                                    ))
-                                    .await;
-                            }
-                            Err(err) => {
-                                let _ = tx.send(Msg::Err(err.into())).await;
-                            }
-                        }
+                            .with_context(|| anyhow!("ERROR: fail to interaction"))
+                            .logging_with(|_| "successfully started new regex-soup.")
+                            .await;
                     });
                 }
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("query") => {
                     println!("cmd: query");
-                    let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
                         let is_joined = CONTAINER
                             .lock()
@@ -201,7 +249,7 @@ impl EventHandler for Handler {
                                             }
                                         },
                                     );
-                                match command
+                                let _ = command
                                     .create_interaction_response(&ctx.http, |response| {
                                         response
                                             .kind(InteractionResponseType::ChannelMessageWithSource)
@@ -210,18 +258,9 @@ impl EventHandler for Handler {
                                             })
                                     })
                                     .await
-                                {
-                                    Ok(_) => {
-                                        let _ = tx
-                                            .send(Msg::Ok(
-                                                "successfully finished query command.".to_owned(),
-                                            ))
-                                            .await;
-                                    }
-                                    Err(err) => {
-                                        let _ = tx.send(Msg::Err(err.into())).await;
-                                    }
-                                }
+                                    .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                    .logging_with(|_| "successfully finished query command.")
+                                    .await;
                             }
                             Err(why) => {
                                 let mut embed = CreateEmbed::default();
@@ -230,7 +269,7 @@ impl EventHandler for Handler {
                                     format!("{why}"),
                                     false,
                                 );
-                                match command
+                                let _ = command
                                     .create_interaction_response(&ctx.http, |response| {
                                         response
                                             .kind(InteractionResponseType::ChannelMessageWithSource)
@@ -239,25 +278,17 @@ impl EventHandler for Handler {
                                             })
                                     })
                                     .await
-                                {
-                                    Ok(_) => {
-                                        let _ = tx
-                                            .send(Msg::Ok(
-                                                "successfully finished error message.".to_owned(),
-                                            ))
-                                            .await;
-                                    }
-                                    Err(err) => {
-                                        let _ = tx.send(Msg::Err(err.into())).await;
-                                    }
-                                }
+                                    .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                    .logging_with(|_| {
+                                        "parse error: successfully finished to send error message."
+                                    })
+                                    .await;
                             }
                         }
                     });
                 }
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("guess") => {
                     println!("cmd: guess");
-                    let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
                         let is_joined = CONTAINER
                             .lock()
@@ -284,6 +315,11 @@ impl EventHandler for Handler {
                                                 "まずは`join`コマンドで参加を登録してください",
                                             )
                                         })
+                                })
+                                .await
+                                .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                .logging_with(|_| {
+                                    "not yet joined: successfully finished to send error message."
                                 })
                                 .await;
                             return;
@@ -333,7 +369,7 @@ impl EventHandler for Handler {
                                         .entry(command.channel_id)
                                         .and_modify(|quiz| *quiz = None);
                                 }
-                                match command
+                                let _ = command
                                     .create_interaction_response(&ctx.http, |response| {
                                         response
                                             .kind(InteractionResponseType::ChannelMessageWithSource)
@@ -342,18 +378,9 @@ impl EventHandler for Handler {
                                             })
                                     })
                                     .await
-                                {
-                                    Ok(_) => {
-                                        let _ = tx
-                                            .send(Msg::Ok(
-                                                "successfully finished guess command.".to_owned(),
-                                            ))
-                                            .await;
-                                    }
-                                    Err(err) => {
-                                        let _ = tx.send(Msg::Err(err.into())).await;
-                                    }
-                                }
+                                    .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                    .logging_with(|_| "successfully finished guess command.")
+                                    .await;
                             }
                             Err(why) => {
                                 let mut embed = CreateEmbed::default();
@@ -362,7 +389,7 @@ impl EventHandler for Handler {
                                     format!("{why}"),
                                     false,
                                 );
-                                match command
+                                let _ = command
                                     .create_interaction_response(&ctx.http, |response| {
                                         response
                                             .kind(InteractionResponseType::ChannelMessageWithSource)
@@ -371,18 +398,12 @@ impl EventHandler for Handler {
                                             })
                                     })
                                     .await
-                                {
-                                    Ok(_) => {
-                                        let _ = tx
-                                            .send(Msg::Ok(
-                                                "successfully finished error message.".to_owned(),
-                                            ))
-                                            .await;
-                                    }
-                                    Err(err) => {
-                                        let _ = tx.send(Msg::Err(err.into())).await;
-                                    }
-                                }
+                                    .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                    .logging_with(|_| {
+                                        "invalid input: successfully finished to send error \
+                                         message."
+                                    })
+                                    .await;
                             }
                         }
                     });
@@ -391,7 +412,6 @@ impl EventHandler for Handler {
                     if cmd.eq("summary") =>
                 {
                     println!("cmd: summary");
-                    let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
                         let embed = CONTAINER
                             .lock()
@@ -423,30 +443,20 @@ impl EventHandler for Handler {
                                     )
                                 },
                             );
-                        match command
+                        let _ = command
                             .create_interaction_response(&ctx.http, |response| {
                                 response
                                     .kind(InteractionResponseType::ChannelMessageWithSource)
                                     .interaction_response_data(|message| message.add_embed(embed))
                             })
                             .await
-                        {
-                            Ok(_) => {
-                                let _ = tx
-                                    .send(Msg::Ok(
-                                        "successfully finished summary command.".to_owned(),
-                                    ))
-                                    .await;
-                            }
-                            Err(err) => {
-                                let _ = tx.send(Msg::Err(err.into())).await;
-                            }
-                        }
+                            .with_context(|| anyhow!("ERROR: fail to interaction"))
+                            .logging_with(|_| "parse error: successfully finished summary command.")
+                            .await;
                     });
                 }
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("join") => {
                     println!("cmd: join");
-                    let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
                         let msg = CONTAINER
                             .lock()
@@ -468,33 +478,22 @@ impl EventHandler for Handler {
                                 },
                             );
 
-                        match command
+                        let _ = command
                             .create_interaction_response(&ctx.http, |response| {
                                 response
                                     .kind(InteractionResponseType::ChannelMessageWithSource)
                                     .interaction_response_data(|message| message.content(&msg))
                             })
                             .await
-                        {
-                            Ok(_) => {
-                                let _ = tx
-                                    .send(Msg::Ok(format!(
-                                        "{} is added.",
-                                        command.user.name.clone()
-                                    )))
-                                    .await;
-                            }
-                            Err(err) => {
-                                let _ = tx.send(Msg::Err(err.into())).await;
-                            }
-                        }
+                            .with_context(|| anyhow!("ERROR: fail to interaction"))
+                            .logging_with(|_| "successfully finished join command.")
+                            .await;
                     });
                 }
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd)))
                     if cmd.eq("give-up") =>
                 {
                     println!("cmd: give-up");
-                    let tx = CENTRAL.sender();
                     tokio::task::spawn(async move {
                         let (msg, end) = CONTAINER
                             .lock()
@@ -551,26 +550,16 @@ impl EventHandler for Handler {
                                 .await;
                             return;
                         }
-                        match command
+                        let _ = command
                             .create_interaction_response(&ctx.http, |response| {
                                 response
                                     .kind(InteractionResponseType::ChannelMessageWithSource)
                                     .interaction_response_data(|message| message.content(&msg))
                             })
                             .await
-                        {
-                            Ok(_) => {
-                                let _ = tx
-                                    .send(Msg::Ok(format!(
-                                        "{} is removed.",
-                                        command.user.name.clone()
-                                    )))
-                                    .await;
-                            }
-                            Err(err) => {
-                                let _ = tx.send(Msg::Err(err.into())).await;
-                            }
-                        }
+                            .with_context(|| anyhow!("ERROR: fail to interaction"))
+                            .logging_with(|_| "successfully finished give-up command.")
+                            .await;
                     });
                 }
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("help") => {
@@ -628,24 +617,16 @@ impl EventHandler for Handler {
                             "#},
                             false,
                         );
-                    let tx = CENTRAL.sender();
-                    match command
+                    let _ = command
                         .create_interaction_response(&ctx.http, |response| {
                             response
                                 .kind(InteractionResponseType::ChannelMessageWithSource)
                                 .interaction_response_data(|message| message.add_embed(embed))
                         })
                         .await
-                    {
-                        Ok(_) => {
-                            let _ = tx
-                                .send(Msg::Ok("successfully finished summary command.".to_owned()))
-                                .await;
-                        }
-                        Err(err) => {
-                            let _ = tx.send(Msg::Err(err.into())).await;
-                        }
-                    }
+                        .with_context(|| anyhow!("ERROR: fail to interaction"))
+                        .logging_with(|_| "successfully finished help command.")
+                        .await;
                 }
                 (_, unknown) => {
                     let _ = CENTRAL
