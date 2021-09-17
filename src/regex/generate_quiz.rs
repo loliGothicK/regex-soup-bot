@@ -25,8 +25,10 @@ use rand_distr::{Binomial, Distribution, Uniform, WeightedIndex};
 use std::num::NonZeroU8;
 use strum::IntoEnumIterator;
 
+#[derive(Debug, Eq, PartialEq)]
 pub struct Difficulty(pub NonZeroU8);
 
+#[derive(Debug, Eq, PartialEq)]
 pub struct AlphabetSet(pub Vec<Alphabet>);
 
 // constants related to generation of quizzes
@@ -228,6 +230,30 @@ pub fn randomly_generate(diff: &Difficulty) -> RegexAst {
             return ast.flatten();
         }
     }
+}
+
+#[test]
+fn difficulty_affects_alphabet_set() {
+    assert_eq!(
+        alphabets_used_with(&Difficulty(NonZeroU8::new(1).unwrap())),
+        AlphabetSet(vec![Alphabet::A])
+    );
+
+    assert_eq!(
+        alphabets_used_with(&Difficulty(NonZeroU8::new(3).unwrap())),
+        AlphabetSet(vec![Alphabet::A, Alphabet::B, Alphabet::C])
+    );
+
+    assert_eq!(
+        alphabets_used_with(&Difficulty(NonZeroU8::new(5).unwrap())),
+        AlphabetSet(vec![
+            Alphabet::A,
+            Alphabet::B,
+            Alphabet::C,
+            Alphabet::D,
+            Alphabet::E
+        ])
+    );
 }
 
 #[test]
