@@ -36,6 +36,20 @@ jobs:
         name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
       -
+        name: Setup rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-09-13
+          target: ${{ matrix.cross-target }}
+          override: true
+      -
+        name: Build using cross
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --target armv7-unknown-linux-gnueabihf
+      -
         name: Build binary using cross
         uses: actions-rs/toolchain@v1
         with:
