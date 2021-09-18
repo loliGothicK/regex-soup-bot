@@ -25,7 +25,8 @@ use counted_array::counted_array;
 use indoc::indoc;
 use once_cell::sync::Lazy;
 use regexsoup::{
-    bot::{Container, Msg, Quiz, Tsx},
+    bot::{Container, Msg, Tsx},
+    commands,
     concepts::SameAs,
     notification::{Notification, SlashCommand, To},
     regex::{Alphabet, RegexAst},
@@ -162,31 +163,57 @@ impl EventHandler for Handler {
 
             match head {
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("start") => {
-                    tokio::task::spawn(async move {
-                        let difficulty: NonZeroU8 = (dictionary
-                            .get("size")
-                            .map_or_else(|| Ok(3i64), |size| size.to::<i64>())
-                            .unwrap() as u8)
-                            .try_into()
-                            .unwrap();
+                    println!("cmd: start");
+                    let difficulty: NonZeroU8 = (dictionary
+                        .get("size")
+                        .map_or_else(|| Ok(3i64), |size| size.to::<i64>())
+                        .unwrap() as u8)
+                        .try_into()
+                        .unwrap();
 
-                        CONTAINER.lock().unwrap().channel_map.insert(
-                            command.channel_id,
-                            Some(Quiz::new_with_difficulty(difficulty)),
-                        );
+                    let quiz = commands::generate_regex(difficulty).await;
 
-                        let msg = "新しいREGガメのスープを開始します".to_string();
-                        let _ = command
-                            .create_interaction_response(&ctx.http, |response| {
-                                response
-                                    .kind(InteractionResponseType::ChannelMessageWithSource)
-                                    .interaction_response_data(|message| message.content(&msg))
-                            })
-                            .await
-                            .with_context(|| anyhow!("ERROR: fail to interaction"))
-                            .logging_with(|_| "successfully started new regex-soup.")
-                            .await;
-                    });
+                    match quiz {
+                        Ok(quiz) => {
+                            CONTAINER
+                                .lock()
+                                .unwrap()
+                                .channel_map
+                                .insert(command.channel_id, Some(quiz));
+                            let _ = command
+                                .create_interaction_response(&ctx.http, |response| {
+                                    response
+                                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                                        .interaction_response_data(|message| {
+                                            message.content("新しいREGガメのスープを開始します")
+                                        })
+                                })
+                                .await
+                                .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                .logging_with(|_| "successfully started new regex-soup.")
+                                .await;
+                        }
+                        Err(why) => {
+                            let mut embed = CreateEmbed::default();
+                            embed.colour(Colour::RED).title("ERROR").field(
+                                "reason:",
+                                format!("{why}"),
+                                false,
+                            );
+                            let _ = command
+                                .create_interaction_response(&ctx.http, |response| {
+                                    response
+                                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                                        .interaction_response_data(|message| {
+                                            message.add_embed(embed)
+                                        })
+                                })
+                                .await
+                                .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                .logging_with(move |_| format!("ERROR: {why}"))
+                                .await;
+                        }
+                    }
                 }
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("query") => {
                     println!("cmd: query");
