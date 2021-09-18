@@ -1,0 +1,49 @@
+name: Release docker images
+
+on:
+  push:
+    branches:
+      - master
+      - feature/docker-build # TODO remove this
+
+jobs:
+  release:
+    runs-on: ubuntu-20.04
+    env:
+      image_name: regex-soup-bot
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@master
+      -
+        name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      -
+        name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      -
+        id: prepare_image_id
+        name: Prepare image id's components
+        run: |
+          image_id=ghcr.io/${{ github.repository_owner }}/${{ env.image_name }}
+          echo "::set-output name=lowercase_id::$(echo $image_id | tr '[A-Z]' '[a-z]')"
+          echo "::set-output name=short-ref::$(git rev-parse --short "$GITHUB_SHA")"
+          echo "::set-output name=branch::${GITHUB_REF#refs/heads/}"
+
+      -
+        name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.prepare_image_id.outputs.lowercase_id }}:latest
+            ${{ steps.prepare_image_id.outputs.lowercase_id }}:${{ steps.prepare_image_id.outputs.branch }}-${{ steps.prepare_image_id.outputs.short-ref }}
