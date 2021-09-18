@@ -43,17 +43,9 @@ jobs:
           target: ${{ matrix.cross-target }}
           override: true
       -
-        name: Build using cross
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: true
-          command: build
-          args: --target ${{ matrix.cross-target }}
-      -
         name: Build binary using cross
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-09-13
           use-cross: true
           command: build
           args: --target ${{ matrix.cross-target }} --release
