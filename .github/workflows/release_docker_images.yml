@@ -44,7 +44,7 @@ jobs:
           override: true
       -
         name: Build binary using cross
-        uses: actions-rs/toolchain@v1
+        uses: actions-rs/cargo@v1
         with:
           use-cross: true
           command: build
