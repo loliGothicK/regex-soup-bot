@@ -33,7 +33,7 @@ jobs:
         name: Prepare image id's components
         run: |
           image_id=ghcr.io/${{ github.repository_owner }}/${{ env.image_name }}
-          echo "::set-output name=lowercase_id::$(echo $image_id | tr '[A-Z]' '[a-z]')"
+          echo "::set-output name=lowercase_id::$(echo $image_id | tr '[A-Z]' '[a-z]' | tr / -)"
           echo "::set-output name=short-ref::$(git rev-parse --short "$GITHUB_SHA")"
           echo "::set-output name=branch::${GITHUB_REF#refs/heads/}"
       -
