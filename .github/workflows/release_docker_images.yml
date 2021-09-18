@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - master
-      - feature/docker-build # TODO remove this
 
 jobs:
   build:
