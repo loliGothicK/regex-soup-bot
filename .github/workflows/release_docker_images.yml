@@ -36,7 +36,6 @@ jobs:
           echo "::set-output name=lowercase_id::$(echo $image_id | tr '[A-Z]' '[a-z]')"
           echo "::set-output name=short-ref::$(git rev-parse --short "$GITHUB_SHA")"
           echo "::set-output name=branch::${GITHUB_REF#refs/heads/}"
-
       -
         name: Build and push
         uses: docker/build-push-action@v2
