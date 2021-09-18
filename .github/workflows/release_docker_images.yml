@@ -42,14 +42,11 @@ jobs:
           command: build
           args: --target ${{ matrix.cross-target }} --release
       -
-        name: Copy artifact to docker/regexsoup-binary
-        run: cp target/${{ matrix.cross-target }}/release/regexsoup docker/artifacts/${{ matrix.cross-target }}
-      -
         name: Upload artifact to collect in next job
         uses: actions/upload-artifact@v2
         with:
           name: ${{ matrix.cross-target }}
-          path: docker/artifacts/${{ matrix.cross-target }}
+          path: target/${{ matrix.cross-target }}/release/regexsoup
 
   release-all:
     name: Push docker image for all platforms
