@@ -48,7 +48,7 @@ jobs:
         with:
           use-cross: true
           command: build
-          args: --target armv7-unknown-linux-gnueabihf
+          args: --target ${{ matrix.cross-target }}
       -
         name: Build binary using cross
         uses: actions-rs/toolchain@v1
