@@ -17,21 +17,24 @@
  *
  */
 
-#![allow(incomplete_features)]
-// Yeah!
-// <const N: {Integer}>: where Foo<{N + 1}>
-//  ~~~~~~~~~~~~~~~~~~             ~~~~~~~
-//  const generics (stable)        generic_const_exprs
-#![feature(generic_const_exprs)]
-// let foo = ...;
-// println!("{foo}");
-//          ~~~~~~~ format args capture (seem to be C#)
-#![feature(format_args_capture)]
+use crate::bot::Quiz;
+use anyhow::{anyhow, bail, Context};
+use std::{num::NonZeroU8, time::Duration};
+use tokio::{sync::oneshot, time::timeout};
 
-pub mod bot;
-pub mod commands;
-pub mod concepts;
-pub mod notification;
-pub mod parser;
-pub mod regex;
-pub mod response;
+pub async fn generate_regex(difficulty: NonZeroU8) -> anyhow::Result<Quiz> {
+    let (tx, rx) = oneshot::channel();
+
+    tokio::task::spawn(async move {
+        let quiz = Quiz::new_with_difficulty(difficulty);
+        let _ = tx.send(quiz);
+    });
+
+    // Wrap the future with a `Timeout` set to expire in 1000 ms.
+    match timeout(Duration::from_millis(1000), rx).await {
+        Ok(quiz) => quiz.with_context(|| anyhow!("receive error")),
+        Err(_) => {
+            bail!("Time out while generating regex (size = {}).", difficulty);
+        }
+    }
+}
