@@ -1,0 +1,12 @@
+# ignore everything
+*
+
+# allow contents required for build
+!/src/**
+!/Cargo.lock
+!/Cargo.toml
+!/rust-toolchain.toml
+
+# allow contents to be copied into image
+!/docker/entrypoint.sh
+!/docker/regexsoup.sh
