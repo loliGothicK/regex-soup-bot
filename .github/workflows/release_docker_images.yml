@@ -58,6 +58,10 @@ jobs:
           command: build
           args: --target ${{ matrix.cross-target }} --release
       -
+        # TODO remove this
+        name: debug folder structure
+        run: tree .
+      -
         name: Copy artifact to docker/regexsoup-binary
         run: cp target/${{ matrix.cross-target }}/release/regexsoup docker/regexsoup-binary
       -
