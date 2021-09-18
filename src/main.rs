@@ -26,6 +26,7 @@ use indoc::indoc;
 use once_cell::sync::Lazy;
 use regexsoup::{
     bot::{Container, Msg, Tsx},
+    command_ext::CommandExt,
     commands,
     concepts::SameAs,
     notification::{Notification, SlashCommand, To},
@@ -40,7 +41,7 @@ use serenity::{
         gateway::Ready,
         interactions::{
             application_command::{ApplicationCommand, ApplicationCommandOptionType},
-            Interaction, InteractionResponseType,
+            Interaction,
         },
     },
     utils::Colour,
@@ -181,13 +182,7 @@ impl EventHandler for Handler {
                                 .channel_map
                                 .insert(command.channel_id, Some(quiz));
                             let _ = command
-                                .create_interaction_response(&ctx.http, |response| {
-                                    response
-                                        .kind(InteractionResponseType::ChannelMessageWithSource)
-                                        .interaction_response_data(|message| {
-                                            message.content("新しいREGガメのスープを開始します")
-                                        })
-                                })
+                                .message(&ctx.http, "新しいREGガメのスープを開始します")
                                 .await
                                 .with_context(|| anyhow!("ERROR: fail to interaction"))
                                 .logging_with(|_| "successfully started new regex-soup.")
@@ -201,13 +196,7 @@ impl EventHandler for Handler {
                                 false,
                             );
                             let _ = command
-                                .create_interaction_response(&ctx.http, |response| {
-                                    response
-                                        .kind(InteractionResponseType::ChannelMessageWithSource)
-                                        .interaction_response_data(|message| {
-                                            message.add_embed(embed)
-                                        })
-                                })
+                                .embed(&ctx.http, embed)
                                 .await
                                 .with_context(|| anyhow!("ERROR: fail to interaction"))
                                 .logging_with(move |_| format!("ERROR: {why}"))
@@ -235,15 +224,7 @@ impl EventHandler for Handler {
 
                         if !is_joined {
                             let _ = command
-                                .create_interaction_response(&ctx.http, |response| {
-                                    response
-                                        .kind(InteractionResponseType::ChannelMessageWithSource)
-                                        .interaction_response_data(|message| {
-                                            message.content(
-                                                "まずは`join`コマンドで参加を登録してください",
-                                            )
-                                        })
-                                })
+                                .message(&ctx.http, "まずは`join`コマンドで参加を登録してください")
                                 .await;
                             return;
                         }
@@ -277,13 +258,7 @@ impl EventHandler for Handler {
                                         },
                                     );
                                 let _ = command
-                                    .create_interaction_response(&ctx.http, |response| {
-                                        response
-                                            .kind(InteractionResponseType::ChannelMessageWithSource)
-                                            .interaction_response_data(|message| {
-                                                message.content(&msg)
-                                            })
-                                    })
+                                    .message(&ctx.http, &msg)
                                     .await
                                     .with_context(|| anyhow!("ERROR: fail to interaction"))
                                     .logging_with(|_| "successfully finished query command.")
@@ -297,13 +272,7 @@ impl EventHandler for Handler {
                                     false,
                                 );
                                 let _ = command
-                                    .create_interaction_response(&ctx.http, |response| {
-                                        response
-                                            .kind(InteractionResponseType::ChannelMessageWithSource)
-                                            .interaction_response_data(|message| {
-                                                message.add_embed(embed)
-                                            })
-                                    })
+                                    .embed(&ctx.http, embed)
                                     .await
                                     .with_context(|| anyhow!("ERROR: fail to interaction"))
                                     .logging_with(|_| {
@@ -334,15 +303,7 @@ impl EventHandler for Handler {
 
                         if !is_joined {
                             let _ = command
-                                .create_interaction_response(&ctx.http, |response| {
-                                    response
-                                        .kind(InteractionResponseType::ChannelMessageWithSource)
-                                        .interaction_response_data(|message| {
-                                            message.content(
-                                                "まずは`join`コマンドで参加を登録してください",
-                                            )
-                                        })
-                                })
+                                .message(&ctx.http, "まずは`join`コマンドで参加を登録してください")
                                 .await
                                 .with_context(|| anyhow!("ERROR: fail to interaction"))
                                 .logging_with(|_| {
@@ -397,13 +358,7 @@ impl EventHandler for Handler {
                                         .and_modify(|quiz| *quiz = None);
                                 }
                                 let _ = command
-                                    .create_interaction_response(&ctx.http, |response| {
-                                        response
-                                            .kind(InteractionResponseType::ChannelMessageWithSource)
-                                            .interaction_response_data(|message| {
-                                                message.content(&msg)
-                                            })
-                                    })
+                                    .message(&ctx.http, &msg)
                                     .await
                                     .with_context(|| anyhow!("ERROR: fail to interaction"))
                                     .logging_with(|_| "successfully finished guess command.")
@@ -417,13 +372,7 @@ impl EventHandler for Handler {
                                     false,
                                 );
                                 let _ = command
-                                    .create_interaction_response(&ctx.http, |response| {
-                                        response
-                                            .kind(InteractionResponseType::ChannelMessageWithSource)
-                                            .interaction_response_data(|message| {
-                                                message.add_embed(embed)
-                                            })
-                                    })
+                                    .embed(&ctx.http, embed)
                                     .await
                                     .with_context(|| anyhow!("ERROR: fail to interaction"))
                                     .logging_with(|_| {
@@ -471,11 +420,7 @@ impl EventHandler for Handler {
                                 },
                             );
                         let _ = command
-                            .create_interaction_response(&ctx.http, |response| {
-                                response
-                                    .kind(InteractionResponseType::ChannelMessageWithSource)
-                                    .interaction_response_data(|message| message.add_embed(embed))
-                            })
+                            .embed(&ctx.http, embed)
                             .await
                             .with_context(|| anyhow!("ERROR: fail to interaction"))
                             .logging_with(|_| "parse error: successfully finished summary command.")
@@ -506,11 +451,7 @@ impl EventHandler for Handler {
                             );
 
                         let _ = command
-                            .create_interaction_response(&ctx.http, |response| {
-                                response
-                                    .kind(InteractionResponseType::ChannelMessageWithSource)
-                                    .interaction_response_data(|message| message.content(&msg))
-                            })
+                            .message(&ctx.http, &msg)
                             .await
                             .with_context(|| anyhow!("ERROR: fail to interaction"))
                             .logging_with(|_| "successfully finished join command.")
@@ -566,23 +507,11 @@ impl EventHandler for Handler {
                                 .channel_map
                                 .entry(command.channel_id)
                                 .and_modify(|quiz| *quiz = None);
-                            let _ = command
-                                .create_interaction_response(&ctx.http, |response| {
-                                    response
-                                        .kind(InteractionResponseType::ChannelMessageWithSource)
-                                        .interaction_response_data(|message| {
-                                            message.content(format!("`{ans}`"))
-                                        })
-                                })
-                                .await;
+                            let _ = command.message(&ctx.http, format!("`{ans}`")).await;
                             return;
                         }
                         let _ = command
-                            .create_interaction_response(&ctx.http, |response| {
-                                response
-                                    .kind(InteractionResponseType::ChannelMessageWithSource)
-                                    .interaction_response_data(|message| message.content(&msg))
-                            })
+                            .message(&ctx.http, &msg)
                             .await
                             .with_context(|| anyhow!("ERROR: fail to interaction"))
                             .logging_with(|_| "successfully finished give-up command.")
@@ -645,11 +574,7 @@ impl EventHandler for Handler {
                             false,
                         );
                     let _ = command
-                        .create_interaction_response(&ctx.http, |response| {
-                            response
-                                .kind(InteractionResponseType::ChannelMessageWithSource)
-                                .interaction_response_data(|message| message.add_embed(embed))
-                        })
+                        .embed(&ctx.http, embed)
                         .await
                         .with_context(|| anyhow!("ERROR: fail to interaction"))
                         .logging_with(|_| "successfully finished help command.")
