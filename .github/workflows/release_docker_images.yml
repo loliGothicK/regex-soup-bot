@@ -1,0 +1,105 @@
+name: Release docker images
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    name: Build for ${{ matrix.docker-platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          -
+            docker-platform: linux/amd64
+            cross-target: x86_64-unknown-linux-gnu
+          -
+            docker-platform: linux/arm/v7
+            cross-target: armv7-unknown-linux-gnueabihf
+          -
+            docker-platform: linux/arm64/v8
+            cross-target: aarch64-unknown-linux-gnu
+    runs-on: ubuntu-20.04
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@master
+      -
+        name: Setup rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-09-13
+          target: ${{ matrix.cross-target }}
+          override: true
+      -
+        name: Build binary using cross
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --target ${{ matrix.cross-target }} --release
+      -
+        name: Upload artifact to collect in next job
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.cross-target }}
+          path: target/${{ matrix.cross-target }}/release/regexsoup
+
+  release-all:
+    name: Push docker image for all platforms
+    runs-on: ubuntu-20.04
+    needs: build
+    env:
+      image_name: regex-soup-bot
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@master
+      -
+        uses: actions/download-artifact@v2
+        with:
+          name: x86_64-unknown-linux-gnu
+          path: docker/artifacts/x86_64-unknown-linux-gnu
+      -
+        uses: actions/download-artifact@v2
+        with:
+          name: armv7-unknown-linux-gnueabihf
+          path: docker/artifacts/armv7-unknown-linux-gnueabihf
+      -
+        uses: actions/download-artifact@v2
+        with:
+          name: aarch64-unknown-linux-gnu
+          path: docker/artifacts/aarch64-unknown-linux-gnu
+      -
+        name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      -
+        name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      -
+        id: prepare_image_id
+        name: Prepare image id's components
+        run: |
+          image_id=ghcr.io/${{ github.repository_owner }}/${{ env.image_name }}
+          echo "::set-output name=lowercase_id::$(echo $image_id | tr '[A-Z]' '[a-z]')"
+          echo "::set-output name=short-ref::$(git rev-parse --short "$GITHUB_SHA")"
+          echo "::set-output name=branch::$(echo ${GITHUB_REF#refs/heads/} | tr / -)"
+      -
+        name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: docker
+          platforms: linux/amd64,linux/arm/v7,linux/arm64/v8
+          push: true
+          tags: |
+            ${{ steps.prepare_image_id.outputs.lowercase_id }}:latest
+            ${{ steps.prepare_image_id.outputs.lowercase_id }}:${{ steps.prepare_image_id.outputs.branch }}-${{ steps.prepare_image_id.outputs.short-ref }}
