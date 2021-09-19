@@ -594,16 +594,7 @@ impl EventHandler for Handler {
     }
 }
 
-pub async fn bot_client() -> anyhow::Result<Client> {
-    // Configure the client with your Discord bot token in the environment.
-    let token = std::env::var("REGEX_SOUP_TOKEN").unwrap();
-
-    // The Application Id is usually the Bot User Id.
-    let application_id = std::env::var("REGEX_SOUP_ID")
-        .unwrap()
-        .parse::<u64>()
-        .unwrap();
-
+pub async fn bot_client(token: impl AsRef<str>, application_id: u64) -> anyhow::Result<Client> {
     // Build our client.
     Client::builder(token)
         .event_handler(Handler)
@@ -701,9 +692,18 @@ pub static CENTRAL: Lazy<Tsx<Msg>> = Lazy::new(|| {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Configure the client with your Discord bot token in the environment.
+    let token = std::env::var("REGEX_SOUP_TOKEN").unwrap();
+
+    // The Application Id is usually the Bot User Id.
+    let application_id = std::env::var("REGEX_SOUP_ID")
+        .unwrap()
+        .parse::<u64>()
+        .unwrap();
+
     // spawn bot client
     tokio::spawn(async move {
-        let mut client = bot_client().await.expect("client");
+        let mut client = bot_client(token, application_id).await.expect("client");
         if let Err(why) = client.start().await {
             println!("{why}");
         }
