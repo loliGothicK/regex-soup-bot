@@ -27,8 +27,10 @@
 // println!("{foo}");
 //          ~~~~~~~ format args capture (seem to be C#)
 #![feature(format_args_capture)]
+#![feature(in_band_lifetimes)]
 
 pub mod bot;
+pub mod command_ext;
 pub mod commands;
 pub mod concepts;
 pub mod notification;

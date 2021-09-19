@@ -21,15 +21,8 @@ use crate::regex::{randomly_generate, Alphabet, Difficulty, RegexAst};
 use anyhow::anyhow;
 use indexmap::{indexmap, indexset, IndexMap, IndexSet};
 use serenity::{
-    builder::{CreateEmbed, CreateInteractionResponse, EditInteractionResponse},
-    http::Http,
-    model::{
-        id::{ChannelId, UserId},
-        interactions::{
-            application_command::ApplicationCommandInteraction,
-            message_component::MessageComponentInteraction,
-        },
-    },
+    builder::CreateEmbed,
+    model::id::{ChannelId, UserId},
     utils::Colour,
 };
 use std::{
@@ -56,52 +49,7 @@ impl<T> Tsx<T> {
     }
 }
 
-pub enum Interactions {
-    Command(ApplicationCommandInteraction),
-    #[allow(dead_code)]
-    Component(Box<MessageComponentInteraction>),
-}
-
-impl Interactions {
-    pub async fn create_interaction_response<F>(
-        &self,
-        http: impl AsRef<Http>,
-        f: F,
-    ) -> anyhow::Result<()>
-    where
-        F: FnOnce(&mut CreateInteractionResponse) -> &mut CreateInteractionResponse,
-    {
-        match self {
-            Interactions::Command(command) => command.create_interaction_response(http, f).await?,
-            Interactions::Component(component) => {
-                (*component).create_interaction_response(http, f).await?
-            }
-        }
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub async fn edit_original_interaction_response<F>(
-        &self,
-        http: impl AsRef<Http>,
-        f: F,
-    ) -> anyhow::Result<serenity::model::channel::Message>
-    where
-        F: FnOnce(&mut EditInteractionResponse) -> &mut EditInteractionResponse,
-    {
-        Ok(match self {
-            Interactions::Command(command) => {
-                command.edit_original_interaction_response(http, f).await?
-            }
-            Interactions::Component(component) => {
-                (*component)
-                    .edit_original_interaction_response(http, f)
-                    .await?
-            }
-        })
-    }
-}
-
+/// opaque-type of `anyhow::Result<String>` for logging
 pub enum Msg {
     Ok(String),
     Err(anyhow::Error),
@@ -111,11 +59,6 @@ pub struct Quiz {
     regex: RegexAst,
     history: IndexMap<String, String>,
     participants: IndexSet<UserId>,
-}
-
-#[allow(dead_code)]
-pub struct Container {
-    pub channel_map: IndexMap<ChannelId, Option<Quiz>>,
 }
 
 impl Quiz {
@@ -203,6 +146,10 @@ impl Default for Quiz {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub struct Container {
+    pub channel_map: IndexMap<ChannelId, Option<Quiz>>,
 }
 
 impl Container {
