@@ -237,7 +237,7 @@ impl RegexAst {
     }
 
     /// Set of alphabets used within this AST.
-    fn used_alphabets(&self) -> HashSet<Alphabet> {
+    pub fn used_alphabets(&self) -> HashSet<Alphabet> {
         let mut accum = HashSet::new();
         let mut exprs_to_process = vec![self];
 
