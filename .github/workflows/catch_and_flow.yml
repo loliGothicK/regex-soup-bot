@@ -6,7 +6,10 @@ on:
       - 'src/**'
       - 'test/**'
       - 'Cargo.lock'
-    branches: [ 'feature/*', 'master' ]
+    branches:
+      - 'feature/*'
+      - 'fix/*'
+      - 'master'
 
 jobs:
   clippy_check:
