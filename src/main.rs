@@ -23,14 +23,15 @@
 use anyhow::{anyhow, Context};
 use counted_array::counted_array;
 use indoc::indoc;
+use itertools::Itertools;
 use once_cell::sync::Lazy;
 use regexsoup::{
-    bot::{Container, Msg, Tsx},
+    bot::{Container, InspectionAcceptance, Msg, Tsx},
     command_ext::CommandExt,
     commands,
     concepts::SameAs,
     notification::{Notification, SlashCommand, To},
-    regex::{Alphabet, RegexAst},
+    regex::Alphabet,
 };
 use serenity::{
     async_trait,
@@ -53,6 +54,7 @@ use std::{
     num::NonZeroU8,
     sync::{Arc, Mutex},
 };
+use strum::IntoEnumIterator;
 use tokio::sync::mpsc::channel;
 
 counted_array!(
@@ -181,8 +183,16 @@ impl EventHandler for Handler {
                                 .unwrap()
                                 .channel_map
                                 .insert(command.channel_id, Some(quiz));
+                            let domain =
+                                Alphabet::iter().take(difficulty.get().into()).collect_vec();
                             let _ = command
-                                .message(&ctx.http, "新しいREGガメのスープを開始します")
+                                .message(
+                                    &ctx.http,
+                                    format!(
+                                        "character set = {domain:?} \
+                                         で新しいREGガメのスープを開始します"
+                                    ),
+                                )
                                 .await
                                 .with_context(|| anyhow!("ERROR: fail to interaction"))
                                 .logging_with(|_| "successfully started new regex-soup.")
@@ -213,52 +223,47 @@ impl EventHandler for Handler {
                             .channel_map
                             .get_mut(&command.channel_id)
                             .map_or_else(
-                                || false,
+                                || None,
                                 |quiz| {
                                     quiz.as_ref().map_or_else(
-                                        || false,
-                                        |quiz| quiz.is_participant(&command.user.id),
+                                        || Some(None),
+                                        |quiz| Some(Some(quiz.is_participant(&command.user.id))),
                                     )
                                 },
                             );
 
-                        if !is_joined {
-                            let _ = command
-                                .message(&ctx.http, "まずは`join`コマンドで参加を登録してください")
-                                .await;
-                            return;
+                        match is_joined {
+                            None | Some(None) => {
+                                let _ = command.message(&ctx.http, "問題が開始していません").await;
+                                return;
+                            }
+                            Some(Some(false)) => {
+                                let _ = command
+                                    .message(
+                                        &ctx.http,
+                                        "まずは`join`コマンドで参加を登録してください",
+                                    )
+                                    .await;
+                                return;
+                            }
+                            _ => {}
                         }
 
-                        let original_input =
-                            dictionary.get("input").unwrap().to::<String>().unwrap();
-                        let input = if original_input == r#""""# {
-                            Ok(vec![])
-                        } else {
-                            Alphabet::vec_from_str(&original_input)
-                        };
-                        match input {
-                            Ok(valid_input) => {
-                                let msg = CONTAINER
-                                    .lock()
-                                    .unwrap()
-                                    .channel_map
-                                    .get_mut(&command.channel_id)
-                                    .map_or_else(
-                                        || "ゲームが開始していません".to_string(),
-                                        |quiz| {
-                                            if let Some(quiz) = quiz {
-                                                let is_match = quiz.query(&valid_input);
-                                                format!(
-                                                    "{original_input} => {}",
-                                                    if is_match { "Yes" } else { "No" }
-                                                )
-                                            } else {
-                                                "ゲームが開始していません".to_string()
-                                            }
-                                        },
-                                    );
+                        let input = dictionary.get("input").unwrap().to::<String>().unwrap();
+                        let is_match = CONTAINER
+                            .lock()
+                            .unwrap()
+                            .channel_map
+                            .get_mut(&command.channel_id)
+                            .unwrap()
+                            .as_mut()
+                            .unwrap()
+                            .query(&input);
+
+                        match is_match {
+                            Ok(is_match) => {
                                 let _ = command
-                                    .message(&ctx.http, &msg)
+                                    .message(&ctx.http, is_match)
                                     .await
                                     .with_context(|| anyhow!("ERROR: fail to interaction"))
                                     .logging_with(|_| "successfully finished query command.")
@@ -292,64 +297,47 @@ impl EventHandler for Handler {
                             .channel_map
                             .get_mut(&command.channel_id)
                             .map_or_else(
-                                || false,
+                                || None,
                                 |quiz| {
                                     quiz.as_ref().map_or_else(
-                                        || false,
-                                        |quiz| quiz.is_participant(&command.user.id),
+                                        || Some(None),
+                                        |quiz| Some(Some(quiz.is_participant(&command.user.id))),
                                     )
                                 },
                             );
 
-                        if !is_joined {
-                            let _ = command
-                                .message(&ctx.http, "まずは`join`コマンドで参加を登録してください")
-                                .await
-                                .with_context(|| anyhow!("ERROR: fail to interaction"))
-                                .logging_with(|_| {
-                                    "not yet joined: successfully finished to send error message."
-                                })
-                                .await;
-                            return;
+                        match is_joined {
+                            None | Some(None) => {
+                                let _ = command.message(&ctx.http, "問題が開始していません").await;
+                                return;
+                            }
+                            Some(Some(false)) => {
+                                let _ = command
+                                    .message(
+                                        &ctx.http,
+                                        "まずは`join`コマンドで参加を登録してください",
+                                    )
+                                    .await;
+                                return;
+                            }
+                            _ => {}
                         }
 
-                        let original_input =
-                            dictionary.get("regex").unwrap().to::<String>().unwrap();
-                        let input = RegexAst::parse_str(&original_input);
-                        match input {
-                            Ok(valid_input) => {
-                                let (msg, is_accepted) = CONTAINER
-                                    .lock()
-                                    .unwrap()
-                                    .channel_map
-                                    .get_mut(&command.channel_id)
-                                    .map_or_else(
-                                        || ("ゲームが開始していません".to_string(), false),
-                                        |quiz| {
-                                            if let Some(quiz) = quiz {
-                                                if quiz.guess(&valid_input) {
-                                                    (
-                                                        format!(
-                                                            indoc! {"
-                                                            - `{}` => AC
-                                                            - original answer is `{}`
-                                                            - {} queries
-                                                        "},
-                                                            original_input,
-                                                            quiz.get_answer_regex(),
-                                                            quiz.len(),
-                                                        ),
-                                                        true,
-                                                    )
-                                                } else {
-                                                    (format!("`{original_input}` => WA"), false)
-                                                }
-                                            } else {
-                                                ("ゲームが開始していません".to_string(), false)
-                                            }
-                                        },
-                                    );
-                                if is_accepted {
+                        let input = dictionary.get("regex").unwrap().to::<String>().unwrap();
+
+                        let inspection = CONTAINER
+                            .lock()
+                            .unwrap()
+                            .channel_map
+                            .get_mut(&command.channel_id)
+                            .unwrap()
+                            .as_mut()
+                            .unwrap()
+                            .inspect(&input);
+
+                        match inspection {
+                            Ok(res) => {
+                                if let InspectionAcceptance::Accepted(_) = res {
                                     CONTAINER
                                         .lock()
                                         .unwrap()
@@ -358,7 +346,7 @@ impl EventHandler for Handler {
                                         .and_modify(|quiz| *quiz = None);
                                 }
                                 let _ = command
-                                    .message(&ctx.http, &msg)
+                                    .message(&ctx.http, res)
                                     .await
                                     .with_context(|| anyhow!("ERROR: fail to interaction"))
                                     .logging_with(|_| "successfully finished guess command.")
@@ -376,8 +364,7 @@ impl EventHandler for Handler {
                                     .await
                                     .with_context(|| anyhow!("ERROR: fail to interaction"))
                                     .logging_with(|_| {
-                                        "invalid input: successfully finished to send error \
-                                         message."
+                                        "parse error: successfully finished to send error message."
                                     })
                                     .await;
                             }
@@ -561,7 +548,7 @@ impl EventHandler for Handler {
                         .field(
                             "/join",
                             indoc! {r#"
-                                You have to `/join` first to take part in the quiz!.
+                                You have to `/join` first to take part in the quiz!
                             "#},
                             false,
                         )
@@ -569,7 +556,7 @@ impl EventHandler for Handler {
                             "/give-up",
                             indoc! {r#"
                                 When all participants have `give-up`,
-                                the quiz will end and the answers will be revealed!.
+                                the quiz will end and the answers will be revealed!
                             "#},
                             false,
                         );
@@ -693,11 +680,11 @@ pub static CENTRAL: Lazy<Tsx<Msg>> = Lazy::new(|| {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Configure the client with your Discord bot token in the environment.
-    let token = std::env::var("REGEX_SOUP_TOKEN").unwrap();
+    let token = std::env::var("REGEX_SOUP_TOKEN").expect("not fount `REGEX_SOUP_TOKEN`");
 
     // The Application Id is usually the Bot User Id.
     let application_id = std::env::var("REGEX_SOUP_ID")
-        .unwrap()
+        .expect("not fount `REGEX_SOUP_ID`")
         .parse::<u64>()
         .unwrap();
 

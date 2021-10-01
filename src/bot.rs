@@ -20,6 +20,7 @@
 use crate::regex::{randomly_generate, Alphabet, Difficulty, RegexAst};
 use anyhow::anyhow;
 use indexmap::{indexmap, indexset, IndexMap, IndexSet};
+use itertools::Itertools;
 use serenity::{
     builder::CreateEmbed,
     model::id::{ChannelId, UserId},
@@ -30,6 +31,7 @@ use std::{
     num::NonZeroU8,
     sync::{Arc, Mutex},
 };
+use strum::IntoEnumIterator;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 /// Struct that holds sender and receiver
@@ -56,9 +58,38 @@ pub enum Msg {
 }
 
 pub struct Quiz {
+    size: u8,
     regex: RegexAst,
     history: IndexMap<String, String>,
     participants: IndexSet<UserId>,
+}
+
+pub enum InspectionAcceptance {
+    Accepted(String),
+    WrongAnswer(String),
+}
+
+impl ToString for InspectionAcceptance {
+    fn to_string(&self) -> String {
+        match self {
+            InspectionAcceptance::Accepted(input) => format!("{input} => AC"),
+            InspectionAcceptance::WrongAnswer(input) => format!("{input} => WA"),
+        }
+    }
+}
+
+pub enum QueryMatch {
+    Yes(String),
+    No(String),
+}
+
+impl ToString for QueryMatch {
+    fn to_string(&self) -> String {
+        match self {
+            QueryMatch::Yes(input) => format!("{input} => Yes"),
+            QueryMatch::No(input) => format!("{input} => No"),
+        }
+    }
 }
 
 impl Quiz {
@@ -66,6 +97,7 @@ impl Quiz {
         let regex = randomly_generate(&Difficulty(3u8.try_into().unwrap()));
         println!("{}", regex);
         Self {
+            size: 3u8,
             regex,
             history: indexmap! {},
             participants: indexset! {},
@@ -76,19 +108,40 @@ impl Quiz {
         let regex = randomly_generate(&Difficulty(difficulty));
         println!("{}", regex);
         Self {
+            size: difficulty.into(),
             regex,
             history: indexmap! {},
             participants: indexset! {},
         }
     }
 
-    pub fn query(&mut self, input: &[Alphabet]) -> bool {
-        let is_match = self.regex.matches(input);
-        let input_string = Alphabet::slice_to_plain_string(input);
+    pub fn query(&mut self, input: &str) -> anyhow::Result<QueryMatch> {
+        let alphabets = if input.eq(r#""""#) {
+            vec![]
+        } else {
+            Alphabet::vec_from_str(input)?
+        };
+        self.validate(&alphabets)?;
+        let is_match = self.regex.matches(&alphabets);
         self.history
-            .entry(input_string)
+            .entry(input.to_string())
             .or_insert((if is_match { "Yes" } else { "No" }).to_string());
-        is_match
+        if is_match {
+            Ok(QueryMatch::Yes(input.to_string()))
+        } else {
+            Ok(QueryMatch::No(input.to_string()))
+        }
+    }
+
+    pub fn inspect(&self, input: &str) -> anyhow::Result<InspectionAcceptance> {
+        let ast = RegexAst::parse_str(input)?;
+        let alphabets = ast.used_alphabets().iter().cloned().collect_vec();
+        self.validate(&alphabets)?;
+        Ok(self
+            .regex
+            .equivalent_to(&ast)
+            .then(|| InspectionAcceptance::Accepted(format!("{} => AC", &input)))
+            .unwrap_or_else(|| InspectionAcceptance::WrongAnswer(format!("{} => WA", &input))))
     }
 
     pub fn register(&mut self, user: UserId) -> anyhow::Result<()> {
@@ -96,10 +149,6 @@ impl Quiz {
             .insert(user)
             .then(|| ())
             .ok_or_else(|| anyhow!("already registered."))
-    }
-
-    pub fn guess(&self, input: &RegexAst) -> bool {
-        self.regex.equivalent_to(input)
     }
 
     pub fn accepts_give_up(&mut self, user: &UserId) -> anyhow::Result<()> {
@@ -139,6 +188,26 @@ impl Quiz {
 
     pub fn get_answer_regex(&self) -> RegexAst {
         self.regex.clone()
+    }
+
+    fn validate(&self, input: &[Alphabet]) -> anyhow::Result<()> {
+        let domain = Alphabet::iter().take(self.size.into()).collect_vec();
+        let invalid = input.iter().filter(|c| !domain.contains(c)).collect_vec();
+        invalid.is_empty().then(|| ()).ok_or_else(|| {
+            anyhow!(
+                indoc::indoc! {"
+                    Domain Error: {:?} {}.
+                    Valid Alphabets are {:?}.
+                "},
+                invalid,
+                if invalid.len() == 1 {
+                    "is not a valid Alphabet"
+                } else {
+                    "are not valid Alphabets"
+                },
+                domain
+            )
+        })
     }
 }
 
