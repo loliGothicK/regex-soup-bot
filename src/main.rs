@@ -106,7 +106,7 @@ impl Containerized for Lazy<Arc<Mutex<Container>>> {
                     .get_mut(&channel)
                     .ok_or_else(|| anyhow!("ゲームが開始していません"))?
                     .as_mut()
-                    .map(|quiz: &mut Quiz| cmd(quiz))
+                    .map(cmd)
                     .ok_or_else(|| anyhow!("not started"));
             }
         }
@@ -134,7 +134,7 @@ impl Containerized for Lazy<Arc<Mutex<Container>>> {
                             anyhow!("まずは`start`コマンドでゲームを開始してください")
                         })
                     })
-                    .map(|quiz| cmd(quiz));
+                    .map(cmd);
             }
         }
     }
