@@ -26,7 +26,7 @@ use indoc::indoc;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 use regexsoup::{
-    bot::{Container, Inspection, Msg, Tsx},
+    bot::{Container, InspectionAcceptance, Msg, Tsx},
     command_ext::CommandExt,
     commands,
     concepts::SameAs,
@@ -337,7 +337,7 @@ impl EventHandler for Handler {
 
                         match inspection {
                             Ok(res) => {
-                                if let Inspection::Accepted(_) = res {
+                                if let InspectionAcceptance::Accepted(_) = res {
                                     CONTAINER
                                         .lock()
                                         .unwrap()
