@@ -29,7 +29,7 @@ use counted_array::counted_array;
 use itertools::Either;
 use once_cell::sync::Lazy;
 use regexsoup::{
-    bot::{Container, Inspection, Msg, Quiz, Tsx},
+    bot::{Container, InspectionAcceptance, Msg, Quiz, Tsx},
     command_ext::CommandExt,
     commands,
     concepts::SameAs,
@@ -350,7 +350,7 @@ impl EventHandler for Handler {
 
                         match inspection {
                             Ok(res) => {
-                                if let Inspection::Accepted(_) = res {
+                                if let InspectionAcceptance::Accepted(_) = res {
                                     CONTAINER.delete(command.channel_id).await;
                                 }
                                 let _ = command

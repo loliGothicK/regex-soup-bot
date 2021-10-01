@@ -71,30 +71,30 @@ pub struct Quiz {
     participants: IndexSet<UserId>,
 }
 
-pub enum Inspection {
+pub enum InspectionAcceptance {
     Accepted(String),
     WrongAnswer(String),
 }
 
-impl ToString for Inspection {
+impl ToString for InspectionAcceptance {
     fn to_string(&self) -> String {
         match self {
-            Inspection::Accepted(input) => format!("{input} => AC"),
-            Inspection::WrongAnswer(input) => format!("{input} => WA"),
+            InspectionAcceptance::Accepted(input) => format!("{input} => AC"),
+            InspectionAcceptance::WrongAnswer(input) => format!("{input} => WA"),
         }
     }
 }
 
-pub enum IsMatch {
+pub enum QueryMatch {
     Yes(String),
     No(String),
 }
 
-impl ToString for IsMatch {
+impl ToString for QueryMatch {
     fn to_string(&self) -> String {
         match self {
-            IsMatch::Yes(input) => format!("{input} => Yes"),
-            IsMatch::No(input) => format!("{input} => No"),
+            QueryMatch::Yes(input) => format!("{input} => Yes"),
+            QueryMatch::No(input) => format!("{input} => No"),
         }
     }
 }
@@ -122,7 +122,7 @@ impl Quiz {
         }
     }
 
-    pub fn query(&mut self, input: &str) -> anyhow::Result<IsMatch> {
+    pub fn query(&mut self, input: &str) -> anyhow::Result<QueryMatch> {
         let alphabets = if input.eq(r#""""#) {
             vec![]
         } else {
@@ -134,21 +134,21 @@ impl Quiz {
             .entry(input.to_string())
             .or_insert((if is_match { "Yes" } else { "No" }).to_string());
         if is_match {
-            Ok(IsMatch::Yes(input.to_string()))
+            Ok(QueryMatch::Yes(input.to_string()))
         } else {
-            Ok(IsMatch::No(input.to_string()))
+            Ok(QueryMatch::No(input.to_string()))
         }
     }
 
-    pub fn inspect(&self, input: &str) -> anyhow::Result<Inspection> {
+    pub fn inspect(&self, input: &str) -> anyhow::Result<InspectionAcceptance> {
         let ast = RegexAst::parse_str(input)?;
         let alphabets = ast.used_alphabets().iter().cloned().collect_vec();
         self.validate(&alphabets)?;
         Ok(self
             .regex
             .equivalent_to(&ast)
-            .then(|| Inspection::Accepted(format!("{} => AC", &input)))
-            .unwrap_or_else(|| Inspection::WrongAnswer(format!("{} => WA", &input))))
+            .then(|| InspectionAcceptance::Accepted(format!("{} => AC", &input)))
+            .unwrap_or_else(|| InspectionAcceptance::WrongAnswer(format!("{} => WA", &input))))
     }
 
     pub fn register(&mut self, user: UserId) -> anyhow::Result<()> {
