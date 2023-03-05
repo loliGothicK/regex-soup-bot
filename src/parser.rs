@@ -17,7 +17,9 @@
  *
  */
 
-use crate::notification::{Component, Notification, SlashCommand};
+use crate::notification::{Notification, SlashCommand};
+
+use serde::{Deserialize, Serialize};
 use serenity::model::interactions::{
     application_command::{
         ApplicationCommandInteractionData, ApplicationCommandInteractionDataOption,
@@ -28,14 +30,17 @@ use serenity::model::interactions::{
 
 type DataOptions = Vec<ApplicationCommandInteractionDataOption>;
 
-pub trait Parser {
+pub trait CommandParser {
     fn parse(&self) -> anyhow::Result<Vec<(String, Notification)>>;
+}
+pub trait ComponentParser {
+    fn parse(&self) -> anyhow::Result<CustomId>;
 }
 
 /// # Parse an Message Component
 /// Parse an interaction containing messages.
 /// More detail, see [DEVELOPER PORTAL](https://discord.com/developers/docs/interactions/slash-commands#data-models-and-types).
-impl Parser for ApplicationCommandInteractionData {
+impl CommandParser for ApplicationCommandInteractionData {
     fn parse(&self) -> anyhow::Result<Vec<(String, Notification)>> {
         type ParserImpl<'a> = &'a dyn Fn(
             &Parser,
@@ -98,22 +103,27 @@ impl Parser for ApplicationCommandInteractionData {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub enum CustomId {
+    Feedback { label: String, regex: String },
+}
+
+impl ToString for CustomId {
+    fn to_string(&self) -> String {
+        serde_json::to_string(&self).expect("valid json")
+    }
+}
+
 /// # Parse an Message Component
 /// Parse an interaction containing messages.
 /// More detail, see [DEVELOPER PORTAL](https://discord.com/developers/docs/interactions/message-components).
-impl Parser for MessageComponentInteractionData {
-    fn parse(&self) -> anyhow::Result<Vec<(String, Notification)>> {
+impl ComponentParser for MessageComponentInteractionData {
+    fn parse(&self) -> anyhow::Result<CustomId> {
         match self.component_type {
             // [Buttons](https://discord.com/developers/docs/interactions/message-components#buttons)
-            ComponentType::Button => Ok(vec![(
-                self.custom_id.clone(),
-                Notification::Component(Component::Button(self.custom_id.clone())),
-            )]),
+            ComponentType::Button => Ok(serde_json::from_str(&self.custom_id)?),
             // [Select Menus](https://discord.com/developers/docs/interactions/message-components#select-menus)
-            ComponentType::SelectMenu => Ok(vec![(
-                self.custom_id.clone(),
-                Notification::Component(Component::SelectMenu(self.values.clone())),
-            )]),
+            ComponentType::SelectMenu => unimplemented!(),
             _ => anyhow::bail!("{:?}", &self),
         }
     }

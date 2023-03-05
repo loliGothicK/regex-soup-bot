@@ -17,22 +17,31 @@
  *
  */
 
-#![allow(incomplete_features)]
 // Yeah!
+#![allow(incomplete_features)]
+#![feature(
+    adt_const_params,
+    const_generics_defaults,
+    const_trait_impl,
+    format_args_capture,
+    generic_const_exprs,
+    in_band_lifetimes
+)]
+// Generic Const-Expression:
 // <const N: {Integer}>: where Foo<{N + 1}>
 //  ~~~~~~~~~~~~~~~~~~             ~~~~~~~
 //  const generics (stable)        generic_const_exprs
-#![feature(generic_const_exprs)]
+
+// Format Arguments Capture:
 // let foo = ...;
 // println!("{foo}");
 //          ~~~~~~~ format args capture (seem to be C#)
-#![feature(format_args_capture)]
-#![feature(in_band_lifetimes)]
 
 pub mod bot;
 pub mod command_ext;
 pub mod commands;
 pub mod concepts;
+pub mod errors;
 pub mod notification;
 pub mod parser;
 pub mod regex;

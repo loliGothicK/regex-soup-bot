@@ -19,36 +19,37 @@
 
 #![feature(format_args_capture)]
 #![feature(never_type)]
+#![feature(in_band_lifetimes)]
+#![feature(result_flattening)]
+#![feature(bool_to_option)]
 
 use anyhow::{anyhow, Context};
 use counted_array::counted_array;
-use indoc::indoc;
-use itertools::Itertools;
+
+use itertools::Either;
 use once_cell::sync::Lazy;
 use regexsoup::{
-    bot::{Container, InspectionAcceptance, Msg, Tsx},
+    bot::{Container, InspectionAcceptance, Msg, Quiz, Tsx},
     command_ext::CommandExt,
     commands,
     concepts::SameAs,
     notification::{Notification, SlashCommand, To},
+    parser::{ComponentParser, CustomId},
     regex::Alphabet,
 };
 use serenity::{
     async_trait,
     builder::CreateEmbed,
     client::{Client, EventHandler},
-    http::Http,
     model::{
         gateway::Ready,
-        interactions::{
-            application_command::{ApplicationCommand, ApplicationCommandOptionType},
-            Interaction,
-        },
+        id::{ChannelId, UserId},
+        interactions::{application_command::ApplicationCommand, Interaction},
     },
     utils::Colour,
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::TryInto,
     fmt::{Debug, Display},
     num::NonZeroU8,
@@ -73,6 +74,113 @@ pub static CONTAINER: Lazy<Arc<Mutex<Container>>> = Lazy::new(|| {
     let container = Container::default();
     Arc::new(Mutex::new(container))
 });
+
+#[async_trait]
+trait Containerized {
+    async fn command<F, R>(&self, channel: ChannelId, cmd: F) -> anyhow::Result<R>
+    where
+        F: FnOnce(&mut Quiz) -> R + Send + Sync + 'async_trait;
+    async fn checked_command<F, R>(
+        &self,
+        channel: ChannelId,
+        user: UserId,
+        cmd: F,
+    ) -> anyhow::Result<R>
+    where
+        F: FnOnce(&mut Quiz) -> R + Send + Sync + 'async_trait;
+    async fn fresh(&self, channel: ChannelId, difficulty: NonZeroU8)
+        -> anyhow::Result<CreateEmbed>;
+    async fn delete(&self, channel: ChannelId);
+}
+
+#[async_trait]
+impl Containerized for Lazy<Arc<Mutex<Container>>> {
+    async fn command<F, R>(&self, channel: ChannelId, cmd: F) -> anyhow::Result<R>
+    where
+        F: FnOnce(&mut Quiz) -> R + Send + Sync + 'async_trait,
+    {
+        loop {
+            if let Ok(mut lock) = self.try_lock() {
+                return lock
+                    .channel_map
+                    .get_mut(&channel)
+                    .ok_or_else(|| anyhow!("ゲームが開始していません"))?
+                    .as_mut()
+                    .map(cmd)
+                    .ok_or_else(|| anyhow!("not started"));
+            }
+        }
+    }
+
+    async fn checked_command<F, R>(
+        &self,
+        channel: ChannelId,
+        user: UserId,
+        cmd: F,
+    ) -> anyhow::Result<R>
+    where
+        F: FnOnce(&mut Quiz) -> R + Send + Sync + 'async_trait,
+    {
+        loop {
+            if let Ok(mut lock) = self.try_lock() {
+                return lock
+                    .channel_map
+                    .get_mut(&channel)
+                    .ok_or_else(|| anyhow!("ゲームが開始していません"))?
+                    .as_mut()
+                    .ok_or_else(|| anyhow!("ゲームが開始していません"))
+                    .and_then(|quiz: &mut Quiz| {
+                        quiz.is_participant(&user).then_some(quiz).ok_or_else(|| {
+                            anyhow!("まずは`start`コマンドでゲームを開始してください")
+                        })
+                    })
+                    .map(cmd);
+            }
+        }
+    }
+
+    async fn fresh(
+        &self,
+        channel: ChannelId,
+        difficulty: NonZeroU8,
+    ) -> anyhow::Result<CreateEmbed> {
+        let quiz = commands::generate_regex(difficulty).await?;
+
+        loop {
+            if let Ok(mut lock) = self.try_lock() {
+                let domain = Alphabet::iter()
+                    .take(difficulty.get().into())
+                    .collect::<HashSet<_>>();
+
+                let mut embed = CreateEmbed::default();
+                embed
+                    .colour(Colour::BLITZ_BLUE)
+                    .title("Starts a fresh REGEX-SOUP")
+                    .field("domain", format!("Σ = {domain:?}"), false);
+
+                return Ok(lock
+                    .channel_map
+                    .insert(channel, Some(quiz))
+                    .map(|_| embed.clone())
+                    .unwrap_or_else(move || {
+                        embed.field("ATTENTION:", "An old REGEX-SOUP is expired.", false);
+                        embed
+                    }));
+            }
+        }
+    }
+
+    async fn delete(&self, channel: ChannelId) {
+        loop {
+            if let Ok(mut lock) = self.try_lock() {
+                lock.channel_map
+                    .entry(channel)
+                    .and_modify(|quiz| *quiz = None);
+                break;
+            }
+        }
+    }
+}
 
 #[async_trait]
 pub trait Logger<T: Debug> {
@@ -132,6 +240,21 @@ impl<T: Debug + Send + Sync + 'static> Logger<T> for anyhow::Result<T> {
     }
 }
 
+trait AsEmbed {
+    fn as_embed(&self) -> CreateEmbed;
+}
+
+impl AsEmbed for anyhow::Error {
+    fn as_embed(&self) -> CreateEmbed {
+        let mut embed = CreateEmbed::default();
+        embed
+            .colour(Colour::RED)
+            .title("ERROR")
+            .field("description:", format!("{self:#?}"), false);
+        embed
+    }
+}
+
 /// Handler for the BOT
 #[derive(Debug)]
 struct Handler;
@@ -139,10 +262,9 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, ctx: serenity::client::Context, _ready: Ready) {
-        let _ = create_slash_commands(&ctx.http).await;
-        let interactions = ApplicationCommand::get_global_application_commands(&ctx.http).await;
-        if let Ok(interactions) = interactions {
-            for cmd in interactions.iter().filter(|cmd| {
+        let commands = commands::create_slash_commands(&ctx.http).await;
+        if let Ok(command) = commands {
+            for cmd in command.iter().filter(|cmd| {
                 !COMMANDS
                     .iter()
                     .any(|expected| cmd.name.starts_with(expected))
@@ -157,7 +279,7 @@ impl EventHandler for Handler {
     }
 
     async fn interaction_create(&self, ctx: serenity::client::Context, interaction: Interaction) {
-        use regexsoup::parser::Parser;
+        use regexsoup::parser::CommandParser;
 
         if let Some(command) = interaction.clone().application_command() {
             let flat_data = command.data.parse().unwrap();
@@ -173,92 +295,26 @@ impl EventHandler for Handler {
                         .unwrap() as u8)
                         .try_into()
                         .unwrap();
-
-                    let quiz = commands::generate_regex(difficulty).await;
-
-                    match quiz {
-                        Ok(quiz) => {
-                            CONTAINER
-                                .lock()
-                                .unwrap()
-                                .channel_map
-                                .insert(command.channel_id, Some(quiz));
-                            let domain =
-                                Alphabet::iter().take(difficulty.get().into()).collect_vec();
-                            let _ = command
-                                .message(
-                                    &ctx.http,
-                                    format!(
-                                        "character set = {domain:?} \
-                                         で新しいREGガメのスープを開始します"
-                                    ),
-                                )
-                                .await
-                                .with_context(|| anyhow!("ERROR: fail to interaction"))
-                                .logging_with(|_| "successfully started new regex-soup.")
-                                .await;
-                        }
-                        Err(why) => {
-                            let mut embed = CreateEmbed::default();
-                            embed.colour(Colour::RED).title("ERROR").field(
-                                "reason:",
-                                format!("{why}"),
-                                false,
-                            );
-                            let _ = command
-                                .embed(&ctx.http, embed)
-                                .await
-                                .with_context(|| anyhow!("ERROR: fail to interaction"))
-                                .logging_with(move |_| format!("ERROR: {why}"))
-                                .await;
-                        }
-                    }
+                    let res = CONTAINER.fresh(command.channel_id, difficulty).await;
+                    let _ = command
+                        .embed(&ctx.http, res.unwrap_or_else(|why| why.as_embed()))
+                        .await
+                        .with_context(|| anyhow!("ERROR: fail to interaction"))
+                        .logging_with(|_| {
+                            "parse error: successfully finished to send error message."
+                        })
+                        .await;
                 }
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("query") => {
                     println!("cmd: query");
                     tokio::task::spawn(async move {
-                        let is_joined = CONTAINER
-                            .lock()
-                            .unwrap()
-                            .channel_map
-                            .get_mut(&command.channel_id)
-                            .map_or_else(
-                                || None,
-                                |quiz| {
-                                    quiz.as_ref().map_or_else(
-                                        || Some(None),
-                                        |quiz| Some(Some(quiz.is_participant(&command.user.id))),
-                                    )
-                                },
-                            );
-
-                        match is_joined {
-                            None | Some(None) => {
-                                let _ = command.message(&ctx.http, "問題が開始していません").await;
-                                return;
-                            }
-                            Some(Some(false)) => {
-                                let _ = command
-                                    .message(
-                                        &ctx.http,
-                                        "まずは`join`コマンドで参加を登録してください",
-                                    )
-                                    .await;
-                                return;
-                            }
-                            _ => {}
-                        }
-
                         let input = dictionary.get("input").unwrap().to::<String>().unwrap();
                         let is_match = CONTAINER
-                            .lock()
-                            .unwrap()
-                            .channel_map
-                            .get_mut(&command.channel_id)
-                            .unwrap()
-                            .as_mut()
-                            .unwrap()
-                            .query(&input);
+                            .checked_command(command.channel_id, command.user.id, |quiz| {
+                                quiz.query(&input)
+                            })
+                            .await
+                            .flatten();
 
                         match is_match {
                             Ok(is_match) => {
@@ -270,19 +326,11 @@ impl EventHandler for Handler {
                                     .await;
                             }
                             Err(why) => {
-                                let mut embed = CreateEmbed::default();
-                                embed.colour(Colour::RED).title("ERROR").field(
-                                    "reason: ",
-                                    format!("{why}"),
-                                    false,
-                                );
                                 let _ = command
-                                    .embed(&ctx.http, embed)
+                                    .embed(&ctx.http, why.as_embed())
                                     .await
                                     .with_context(|| anyhow!("ERROR: fail to interaction"))
-                                    .logging_with(|_| {
-                                        "parse error: successfully finished to send error message."
-                                    })
+                                    .logging_with(move |_| format!("{why:#?}"))
                                     .await;
                             }
                         }
@@ -291,59 +339,19 @@ impl EventHandler for Handler {
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("guess") => {
                     println!("cmd: guess");
                     tokio::task::spawn(async move {
-                        let is_joined = CONTAINER
-                            .lock()
-                            .unwrap()
-                            .channel_map
-                            .get_mut(&command.channel_id)
-                            .map_or_else(
-                                || None,
-                                |quiz| {
-                                    quiz.as_ref().map_or_else(
-                                        || Some(None),
-                                        |quiz| Some(Some(quiz.is_participant(&command.user.id))),
-                                    )
-                                },
-                            );
-
-                        match is_joined {
-                            None | Some(None) => {
-                                let _ = command.message(&ctx.http, "問題が開始していません").await;
-                                return;
-                            }
-                            Some(Some(false)) => {
-                                let _ = command
-                                    .message(
-                                        &ctx.http,
-                                        "まずは`join`コマンドで参加を登録してください",
-                                    )
-                                    .await;
-                                return;
-                            }
-                            _ => {}
-                        }
-
                         let input = dictionary.get("regex").unwrap().to::<String>().unwrap();
 
                         let inspection = CONTAINER
-                            .lock()
-                            .unwrap()
-                            .channel_map
-                            .get_mut(&command.channel_id)
-                            .unwrap()
-                            .as_mut()
-                            .unwrap()
-                            .inspect(&input);
+                            .checked_command(command.channel_id, command.user.id, |quiz| {
+                                quiz.inspect(&input)
+                            })
+                            .await
+                            .flatten();
 
                         match inspection {
                             Ok(res) => {
                                 if let InspectionAcceptance::Accepted(_) = res {
-                                    CONTAINER
-                                        .lock()
-                                        .unwrap()
-                                        .channel_map
-                                        .entry(command.channel_id)
-                                        .and_modify(|quiz| *quiz = None);
+                                    CONTAINER.delete(command.channel_id).await;
                                 }
                                 let _ = command
                                     .message(&ctx.http, res)
@@ -353,19 +361,11 @@ impl EventHandler for Handler {
                                     .await;
                             }
                             Err(why) => {
-                                let mut embed = CreateEmbed::default();
-                                embed.colour(Colour::RED).title("ERROR").field(
-                                    "reason: ",
-                                    format!("{why}"),
-                                    false,
-                                );
                                 let _ = command
-                                    .embed(&ctx.http, embed)
+                                    .embed(&ctx.http, why.as_embed())
                                     .await
                                     .with_context(|| anyhow!("ERROR: fail to interaction"))
-                                    .logging_with(|_| {
-                                        "parse error: successfully finished to send error message."
-                                    })
+                                    .logging_with(move |_| format!("{why:#?}"))
                                     .await;
                             }
                         }
@@ -376,73 +376,60 @@ impl EventHandler for Handler {
                 {
                     println!("cmd: summary");
                     tokio::task::spawn(async move {
-                        let embed = CONTAINER
-                            .lock()
-                            .unwrap()
-                            .channel_map
-                            .get(&command.channel_id)
-                            .map_or_else(
-                                || {
-                                    let mut embed = CreateEmbed::default();
-                                    embed.colour(Colour::DARK_RED).title("ERROR").field(
-                                        "reason: ",
-                                        "ゲームが開始してません",
-                                        false,
-                                    );
-                                    embed
-                                },
-                                |quiz| {
-                                    quiz.as_ref().map_or_else(
-                                        || {
-                                            let mut embed = CreateEmbed::default();
-                                            embed.colour(Colour::DARK_RED).title("ERROR").field(
-                                                "reason: ",
-                                                "ゲームが開始してません",
-                                                false,
-                                            );
-                                            embed
-                                        },
-                                        |quiz| quiz.get_query_history(),
-                                    )
-                                },
-                            );
-                        let _ = command
-                            .embed(&ctx.http, embed)
-                            .await
-                            .with_context(|| anyhow!("ERROR: fail to interaction"))
-                            .logging_with(|_| "parse error: successfully finished summary command.")
+                        let summary = CONTAINER
+                            .checked_command(command.channel_id, command.user.id, |quiz| {
+                                quiz.get_query_history()
+                            })
                             .await;
+                        match summary {
+                            Ok(summary) => {
+                                let _ = command
+                                    .embed(&ctx.http, summary)
+                                    .await
+                                    .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                    .logging_with(|_| "successfully finished summary command.")
+                                    .await;
+                            }
+                            Err(why) => {
+                                let _ = command
+                                    .message(&ctx.http, format!("{why}"))
+                                    .await
+                                    .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                    .logging_with(move |_| format!("{why}"))
+                                    .await;
+                            }
+                        }
                     });
                 }
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("join") => {
                     println!("cmd: join");
                     tokio::task::spawn(async move {
-                        let msg = CONTAINER
-                            .lock()
-                            .unwrap()
-                            .channel_map
-                            .get_mut(&command.channel_id)
-                            .map_or_else(
-                                || "まずは`start`コマンドでゲームを開始してください".to_string(),
-                                |quiz| {
-                                    if let Some(quiz) = quiz {
-                                        quiz.register(command.user.id).map_or_else(
-                                            |_| "すでに登録されています".to_string(),
-                                            |_| format!("{} is added.", command.user.name.clone()),
-                                        )
-                                    } else {
-                                        "まずは`start`コマンドでゲームを開始してください"
-                                            .to_string()
-                                    }
-                                },
-                            );
-
-                        let _ = command
-                            .message(&ctx.http, &msg)
+                        let res = CONTAINER
+                            .checked_command(command.channel_id, command.user.id, |quiz| {
+                                quiz.register(command.user.id)
+                            })
                             .await
-                            .with_context(|| anyhow!("ERROR: fail to interaction"))
-                            .logging_with(|_| "successfully finished join command.")
-                            .await;
+                            .flatten()
+                            .map(|_| format!("{} is added.", command.user.name));
+
+                        match res {
+                            Ok(msg) => {
+                                let _ = command
+                                    .message(&ctx.http, &msg)
+                                    .await
+                                    .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                    .logging_with(|_| "successfully finished join command.")
+                                    .await;
+                            }
+                            Err(why) => {
+                                let _ = command
+                                    .message(&ctx.http, format!("{why}"))
+                                    .await
+                                    .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                    .logging_with(move |_| format!("{why}"))
+                                    .await;
+                            }
+                        }
                     });
                 }
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd)))
@@ -450,118 +437,47 @@ impl EventHandler for Handler {
                 {
                     println!("cmd: give-up");
                     tokio::task::spawn(async move {
-                        let (msg, end) = CONTAINER
-                            .lock()
-                            .unwrap()
-                            .channel_map
-                            .get_mut(&command.channel_id)
-                            .map_or_else(
-                                || {
-                                    (
-                                        "まずは`start`コマンドでゲームを開始してください"
-                                            .to_string(),
-                                        None,
-                                    )
-                                },
-                                |quiz| {
-                                    if let Some(quiz) = quiz {
-                                        quiz.accepts_give_up(&command.user.id).map_or_else(
-                                            |_| ("まだ登録されていません".to_string(), None),
-                                            |_| {
-                                                (
-                                                    format!(
-                                                        "{} is removed.",
-                                                        command.user.name.clone()
-                                                    ),
-                                                    quiz.is_empty()
-                                                        .then(|| quiz.get_answer_regex()),
-                                                )
-                                            },
-                                        )
-                                    } else {
-                                        (
-                                            "まずは`start`コマンドでゲームを開始してください"
-                                                .to_string(),
-                                            None,
-                                        )
-                                    }
-                                },
-                            );
-                        if let Some(ans) = end {
-                            CONTAINER
-                                .lock()
-                                .unwrap()
-                                .channel_map
-                                .entry(command.channel_id)
-                                .and_modify(|quiz| *quiz = None);
-                            let _ = command.message(&ctx.http, format!("`{ans}`")).await;
-                            return;
-                        }
-                        let _ = command
-                            .message(&ctx.http, &msg)
+                        let res = CONTAINER
+                            .checked_command(command.channel_id, command.user.id, |quiz| {
+                                quiz.accepts_give_up(&command.user)
+                            })
                             .await
-                            .with_context(|| anyhow!("ERROR: fail to interaction"))
-                            .logging_with(|_| "successfully finished give-up command.")
-                            .await;
+                            .flatten();
+
+                        match res {
+                            Ok(either) => match either {
+                                Either::Right((content, buttons)) => {
+                                    CONTAINER.delete(command.channel_id).await;
+                                    let _ = command
+                                        .button(&ctx.http, content, buttons)
+                                        .await
+                                        .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                        .logging_with(|_| "successfully finished give-up command.")
+                                        .await;
+                                }
+                                Either::Left(msg) => {
+                                    let _ = command
+                                        .message(&ctx.http, &msg)
+                                        .await
+                                        .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                        .logging_with(|_| "successfully finished give-up command.")
+                                        .await;
+                                }
+                            },
+                            Err(why) => {
+                                let _ = command
+                                    .message(&ctx.http, format!("{why}"))
+                                    .await
+                                    .with_context(|| anyhow!("ERROR: fail to interaction"))
+                                    .logging_with(move |_| format!("{why}"))
+                                    .await;
+                            }
+                        }
                     });
                 }
                 (_, Notification::SlashCommand(SlashCommand::Command(cmd))) if cmd.eq("help") => {
-                    let mut embed = CreateEmbed::default();
-                    embed.colour(Colour::DARK_GREEN).title("HELP");
-                    embed
-                        .field(
-                            "REGEX-SOUP 101",
-                            indoc! {
-                                "`/start` => `/join` => `/query` => (`/summary`) => `/guess`"
-                            },
-                            false,
-                        )
-                        .field(
-                            "/start [DIFFICULTY]",
-                            indoc! {
-                                "[DIFFICULTY]: number of alphabets"
-                            },
-                            false,
-                        )
-                        .field(
-                            "/query [INPUT]",
-                            indoc! {r#"
-                                [INPUT]: alphabets to test (`""` is accepted as empty string)
-                            "#},
-                            false,
-                        )
-                        .field(
-                            "/guess [INPUT]",
-                            indoc! {r#"
-                                Check your answer.
-                                [INPUT]: regex you guess
-                            "#},
-                            false,
-                        )
-                        .field(
-                            "/summary",
-                            indoc! {r#"
-                                Shows the history of querries.
-                            "#},
-                            false,
-                        )
-                        .field(
-                            "/join",
-                            indoc! {r#"
-                                You have to `/join` first to take part in the quiz!
-                            "#},
-                            false,
-                        )
-                        .field(
-                            "/give-up",
-                            indoc! {r#"
-                                When all participants have `give-up`,
-                                the quiz will end and the answers will be revealed!
-                            "#},
-                            false,
-                        );
                     let _ = command
-                        .embed(&ctx.http, embed)
+                        .embed(&ctx.http, commands::help())
                         .await
                         .with_context(|| anyhow!("ERROR: fail to interaction"))
                         .logging_with(|_| "successfully finished help command.")
@@ -575,97 +491,32 @@ impl EventHandler for Handler {
                 }
             }
         } else if let Some(component) = interaction.clone().message_component() {
-            let _ = component.data.parse().unwrap();
-            // TODO:
+            let data = component.data.parse().unwrap();
+            match data {
+                CustomId::Feedback { label, regex } => {
+                    println!("{regex} => {label}");
+                    let _ = component
+                        .message(&ctx.http, "ありがとうございました")
+                        .await
+                        .with_context(|| anyhow!("ERROR: fail to interaction"))
+                        .logging_with(|_| "successfully finished feedback.")
+                        .await;
+                }
+            }
         }
     }
 }
 
-pub async fn bot_client(token: impl AsRef<str>, application_id: u64) -> anyhow::Result<Client> {
+pub async fn build_bot_client(
+    token: impl AsRef<str>,
+    application_id: u64,
+) -> anyhow::Result<Client> {
     // Build our client.
     Client::builder(token)
         .event_handler(Handler)
         .application_id(application_id)
         .await
         .with_context(|| anyhow!("ERROR: failed to build client"))
-}
-
-pub async fn create_slash_commands(http: impl AsRef<Http>) -> anyhow::Result<()> {
-    // start [DIFFICULTY]: ゲームセッション開始コマンド
-    // query: マッチクエリ
-    // guess: 回答試行
-    // summary: 今までのクエリのサマリ表示
-    // join: 参加表明
-    // give-up: 投了
-
-    let _ = ApplicationCommand::create_global_application_command(&http, |a| {
-        a.name("start")
-            .description("Starting new regex-soup")
-            .create_option(|o| {
-                o.name("size")
-                    .description("Please choice number of characters in the domain-set.")
-                    .kind(ApplicationCommandOptionType::Integer)
-                    .add_int_choice(1, 1)
-                    .add_int_choice(2, 2)
-                    .add_int_choice(3, 3)
-                    .add_int_choice(4, 4)
-                    .add_int_choice(5, 5)
-                    .add_int_choice(6, 6)
-                    .add_int_choice(7, 7)
-                    .add_int_choice(8, 8)
-                    .add_int_choice(9, 9)
-                    .add_int_choice(10, 10)
-                    .required(false)
-            })
-    })
-    .await?;
-
-    let _ = ApplicationCommand::create_global_application_command(&http, |a| {
-        a.name("query")
-            .description("Query whether is matched with regular expression.")
-            .create_option(|o| {
-                o.name("input")
-                    .description("Please enter the input you wish to test for a match.")
-                    .kind(ApplicationCommandOptionType::String)
-                    .required(true)
-            })
-    })
-    .await?;
-
-    let _ = ApplicationCommand::create_global_application_command(&http, |a| {
-        a.name("guess")
-            .description("Check your answer.")
-            .create_option(|o| {
-                o.name("regex")
-                    .description("Please enter the regex you guess.")
-                    .kind(ApplicationCommandOptionType::String)
-                    .required(true)
-            })
-    })
-    .await?;
-
-    let _ = ApplicationCommand::create_global_application_command(&http, |a| {
-        a.name("summary")
-            .description("Dump the results of the query so far.")
-    })
-    .await?;
-
-    let _ = ApplicationCommand::create_global_application_command(&http, |a| {
-        a.name("join").description("Register your participation.")
-    })
-    .await?;
-
-    let _ = ApplicationCommand::create_global_application_command(&http, |a| {
-        a.name("give-up").description("Register your despair.")
-    })
-    .await?;
-
-    let _ = ApplicationCommand::create_global_application_command(&http, |a| {
-        a.name("help").description("helpful")
-    })
-    .await?;
-
-    Ok(())
 }
 
 /// Sender/Receiver
@@ -680,19 +531,21 @@ pub static CENTRAL: Lazy<Tsx<Msg>> = Lazy::new(|| {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Configure the client with your Discord bot token in the environment.
-    let token = std::env::var("REGEX_SOUP_TOKEN").expect("not fount `REGEX_SOUP_TOKEN`");
+    let token = std::env::var("REGEX_SOUP_TOKEN").expect("`REGEX_SOUP_TOKEN` is not found");
 
     // The Application Id is usually the Bot User Id.
     let application_id = std::env::var("REGEX_SOUP_ID")
-        .expect("not fount `REGEX_SOUP_ID`")
+        .expect("`REGEX_SOUP_ID` is not found")
         .parse::<u64>()
         .unwrap();
 
     // spawn bot client
     tokio::spawn(async move {
-        let mut client = bot_client(token, application_id).await.expect("client");
+        let mut client = build_bot_client(token, application_id)
+            .await
+            .expect("client");
         if let Err(why) = client.start().await {
-            println!("{why}");
+            println!("{why:#?}");
         }
     });
 
@@ -703,7 +556,7 @@ async fn main() -> anyhow::Result<()> {
         while let Some(msg) = rx.recv().await {
             match msg {
                 Msg::Ok(log) => println!("{log}"),
-                Msg::Err(why) => println!("{why}"),
+                Msg::Err(why) => println!("{why:#?}"),
             }
         }
     }

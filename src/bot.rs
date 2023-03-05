@@ -19,11 +19,18 @@
 
 use crate::regex::{randomly_generate, Alphabet, Difficulty, RegexAst};
 use anyhow::anyhow;
+
+use crate::parser::CustomId;
 use indexmap::{indexmap, indexset, IndexMap, IndexSet};
-use itertools::Itertools;
+use indoc::indoc;
+use itertools::{Either, Itertools};
 use serenity::{
-    builder::CreateEmbed,
-    model::id::{ChannelId, UserId},
+    builder::{CreateButton, CreateEmbed},
+    model::{
+        id::{ChannelId, UserId},
+        interactions::message_component::ButtonStyle,
+        user::User,
+    },
     utils::Colour,
 };
 use std::{
@@ -151,11 +158,46 @@ impl Quiz {
             .ok_or_else(|| anyhow!("already registered."))
     }
 
-    pub fn accepts_give_up(&mut self, user: &UserId) -> anyhow::Result<()> {
+    pub fn accepts_give_up(
+        &mut self,
+        user: &User,
+    ) -> anyhow::Result<Either<String, (String, [CreateButton; 2])>> {
         self.participants
-            .remove(user)
+            .remove(&user.id)
             .then(|| ())
-            .ok_or_else(|| anyhow!("not registered"))
+            .ok_or_else(|| anyhow!("not registered"))?;
+        Ok(self
+            .participants
+            .is_empty()
+            .then(|| {
+                let mut good = CreateButton::default();
+                good.style(ButtonStyle::Success)
+                    .custom_id(CustomId::Feedback {
+                        label: "good".to_string(),
+                        regex: format!("{}", &self.regex),
+                    })
+                    .label("Good");
+                let mut bad = CreateButton::default();
+                bad.style(ButtonStyle::Danger)
+                    .custom_id(CustomId::Feedback {
+                        label: "bad".to_string(),
+                        regex: format!("{}", &self.regex),
+                    })
+                    .label("Bad");
+
+                Either::Right((
+                    format!(
+                        indoc! {r#"
+                            There is no longer a challenger.
+                            The answer is `{}`.
+                            Was the regular expression interesting as a problem?
+                        "#},
+                        self.regex
+                    ),
+                    [good, bad],
+                ))
+            })
+            .unwrap_or_else(|| Either::Left(format!("{} is removed.", &user.name))))
     }
 
     pub fn get_query_history(&self) -> CreateEmbed {

@@ -904,6 +904,7 @@ dependencies = [
  "rustomaton",
  "serde",
  "serde_derive",
+ "serde_json",
  "serenity",
  "strum",
  "strum_macros",
